@@ -1,0 +1,718 @@
+<template>
+  <div class="panel">
+    <h2>🌐 网络配置与拓扑生成</h2>
+    
+    <!-- 模式切换 -->
+    <div class="mode-selector">
+      <button 
+        :class="['mode-btn', { active: mode === 'auto' }]"
+        @click="mode = 'auto'"
+      >
+        🤖 随机生成
+      </button>
+      <button 
+        :class="['mode-btn', { active: mode === 'manual' }]"
+        @click="mode = 'manual'"
+      >
+        ✏️ 手动编辑
+      </button>
+    </div>
+
+    <div class="layout">
+      <!-- 配置区域 -->
+      <div class="section">
+        <!-- 随机生成模式 -->
+        <div v-if="mode === 'auto'">
+        <h3>网络参数配置</h3>
+        
+        <div class="form-group">
+          <label>节点数量 (路由器数量):</label>
+          <input type="number" v-model.number="config.num_nodes" min="2" max="100" />
+          <span class="hint">推荐: 20-30，网络将自动保证所有节点可达</span>
+        </div>
+
+        <div class="form-group">
+          <label>造价范围:</label>
+          <div class="range-input">
+            <input type="number" v-model.number="config.cost_range[0]" min="1" />
+            <span>~</span>
+            <input type="number" v-model.number="config.cost_range[1]" min="1" />
+          </div>
+          <span class="hint">最小 ~ 最大造价</span>
+        </div>
+
+        <div class="form-group">
+          <label>吞吐量/容量范围:</label>
+          <div class="range-input">
+            <input type="number" v-model.number="config.capacity_range[0]" min="1" />
+            <span>~</span>
+            <input type="number" v-model.number="config.capacity_range[1]" min="1" />
+          </div>
+          <span class="hint">最小 ~ 最大吞吐量</span>
+        </div>
+
+        <div class="form-group">
+          <label>随机种子:</label>
+          <input type="number" v-model.number="config.seed" />
+          <span class="hint">相同种子生成相同网络</span>
+        </div>
+
+        <div class="button-group">
+          <button @click="generateNetwork" :disabled="loading" class="primary">
+            {{ loading ? '生成中...' : '🚀 生成网络' }}
+          </button>
+          <button @click="loadDefaultConfig" class="secondary">
+            📋 使用默认配置
+          </button>
+          <button @click="useGeneratedNetwork" :disabled="!networkData" class="success">
+            ✅ 应用到算法
+          </button>
+        </div>
+        </div>
+
+        <!-- 手动编辑模式 -->
+        <div v-else>
+          <h3>手动编辑网络</h3>
+          
+          <div class="form-group">
+            <label>节点数量:</label>
+            <input type="number" v-model.number="manualNodes" min="2" max="100" @change="initManualEdges" />
+            <span class="hint">设置节点数量后，可以配置边</span>
+          </div>
+
+          <div v-if="manualNodes >= 2" class="edges-editor">
+            <h4>边配置 <button @click="addManualEdge" class="add-edge-btn">➕ 添加边</button></h4>
+            <div class="edges-list">
+              <div v-for="(edge, idx) in manualEdges" :key="idx" class="edge-item">
+                <select v-model.number="edge.from">
+                  <option v-for="n in manualNodes" :key="n" :value="n-1">{{ n-1 }}</option>
+                </select>
+                <span>→</span>
+                <select v-model.number="edge.to">
+                  <option v-for="n in manualNodes" :key="n" :value="n-1">{{ n-1 }}</option>
+                </select>
+                <input type="number" v-model.number="edge.cost" placeholder="造价" min="1" />
+                <input type="number" v-model.number="edge.capacity" placeholder="容量" min="1" />
+                <button @click="removeManualEdge(idx)" class="remove-btn">❌</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="button-group" style="margin-top: 1.5rem;">
+            <button @click="applyManualNetwork" :disabled="loading || manualEdges.length === 0" class="primary">
+              {{ loading ? '处理中...' : '💾 生成网络' }}
+            </button>
+            <button @click="loadExampleManual" class="secondary">
+              📝 加载示例
+            </button>
+            <button @click="useGeneratedNetwork" :disabled="!networkData" class="success">
+              ✅ 应用到算法
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 结果展示区域 -->
+      <div class="section">
+        <h3>网络拓扑可视化</h3>
+        
+        <div v-if="error" class="error-box">
+          ❌ {{ error }}
+        </div>
+
+        <div v-if="networkData" class="result-container">
+          <!-- 统计信息 -->
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-label">节点数</div>
+              <div class="stat-value">{{ networkData.stats.num_nodes }}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">边数</div>
+              <div class="stat-value">{{ networkData.stats.num_edges }}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">平均造价</div>
+              <div class="stat-value">{{ networkData.stats.avg_cost.toFixed(1) }}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">平均容量</div>
+              <div class="stat-value">{{ networkData.stats.avg_capacity.toFixed(1) }}</div>
+            </div>
+          </div>
+
+          <!-- 拓扑图 -->
+          <div class="topology-image">
+            <img 
+              v-if="networkData.topology_image" 
+              :src="'data:image/png;base64,' + networkData.topology_image" 
+              alt="网络拓扑图"
+            />
+          </div>
+
+          <!-- 应用状态 -->
+          <div v-if="isApplied" class="success-box" style="animation: fadeIn 0.3s ease-in;">
+            ✅ 网络配置已应用！
+            <div style="margin-top: 0.5rem; font-size: 0.9rem;">
+              👉 请切换到“最小生成树”或“最大流”标签页，点击“加载配置网络”按钮使用
+            </div>
+          </div>
+        </div>
+
+        <div v-if="!networkData && !loading" class="placeholder">
+          <p>👆 配置参数并生成网络拓扑</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive, onMounted, inject } from 'vue'
+import { api } from '../api/backend.js'
+
+const config = reactive({
+  num_nodes: 25,
+  cost_range: [10, 100],
+  capacity_range: [100, 1000],
+  seed: 42
+})
+
+const loading = ref(false)
+const error = ref(null)
+const networkData = ref(null)
+const isApplied = ref(false)
+const mode = ref('auto') // 'auto' or 'manual'
+
+// 手动编辑模式的数据
+const manualNodes = ref(5)
+const manualEdges = ref([])
+
+// 获取全局状态管理（如果存在）
+const setGlobalNetwork = inject('setGlobalNetwork', null)
+
+onMounted(async () => {
+  // 加载默认配置
+  try {
+    const defaultConfig = await api.getDefaultNetworkConfig()
+    Object.assign(config, defaultConfig)
+  } catch (err) {
+    console.error('加载默认配置失败:', err)
+  }
+})
+
+async function generateNetwork() {
+  loading.value = true
+  error.value = null
+  isApplied.value = false
+  
+  try {
+    const result = await api.generateNetwork(config)
+    networkData.value = result
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadDefaultConfig() {
+  try {
+    const defaultConfig = await api.getDefaultNetworkConfig()
+    Object.assign(config, defaultConfig)
+    error.value = null
+  } catch (err) {
+    error.value = '加载默认配置失败: ' + err.message
+  }
+}
+
+function useGeneratedNetwork() {
+  if (!networkData.value) return
+  
+  const dataToSave = {
+    nodes: networkData.value.nodes,
+    edges: networkData.value.edges,
+    config: networkData.value.config
+  }
+  
+  console.log('保存网络数据到 localStorage:', dataToSave)
+  
+  // 保存到 localStorage
+  localStorage.setItem('campus-network-data', JSON.stringify(dataToSave))
+  
+  // 验证保存成功
+  const saved = localStorage.getItem('campus-network-data')
+  console.log('验证保存:', saved ? 'OK' : 'FAILED')
+  
+  // 如果有全局状态管理，也更新到全局
+  if (setGlobalNetwork) {
+    setGlobalNetwork(networkData.value)
+  }
+  
+  isApplied.value = true
+}
+
+function initManualEdges() {
+  manualEdges.value = []
+}
+
+function addManualEdge() {
+  if (manualNodes.value < 2) return
+  manualEdges.value.push({
+    from: 0,
+    to: 1,
+    cost: 10,
+    capacity: 100
+  })
+}
+
+function removeManualEdge(index) {
+  manualEdges.value.splice(index, 1)
+}
+
+function loadExampleManual() {
+  manualNodes.value = 6
+  manualEdges.value = [
+    { from: 0, to: 1, cost: 6, capacity: 100 },
+    { from: 0, to: 3, cost: 12, capacity: 150 },
+    { from: 0, to: 2, cost: 8, capacity: 120 },
+    { from: 1, to: 4, cost: 7, capacity: 200 },
+    { from: 1, to: 2, cost: 3, capacity: 80 },
+    { from: 2, to: 3, cost: 5, capacity: 90 },
+    { from: 2, to: 5, cost: 9, capacity: 110 },
+    { from: 3, to: 5, cost: 4, capacity: 130 },
+    { from: 4, to: 5, cost: 11, capacity: 160 }
+  ]
+}
+
+async function applyManualNetwork() {
+  loading.value = true
+  error.value = null
+  isApplied.value = false
+  
+  try {
+    // 验证边
+    for (const edge of manualEdges.value) {
+      if (edge.from === edge.to) {
+        throw new Error(`边 ${edge.from}-${edge.to} 不能连接到自身`)
+      }
+      if (edge.from < 0 || edge.from >= manualNodes.value || 
+          edge.to < 0 || edge.to >= manualNodes.value) {
+        throw new Error(`边 ${edge.from}-${edge.to} 的节点超出范围`)
+      }
+      if (!edge.cost || edge.cost <= 0 || !edge.capacity || edge.capacity <= 0) {
+        throw new Error(`边 ${edge.from}-${edge.to} 的造价和容量必须大于0`)
+      }
+    }
+    
+    // 构造网络数据
+    const nodes = []
+    for (let i = 0; i < manualNodes.value; i++) {
+      nodes.push({ id: i, label: String(i) })
+    }
+    
+    const edges = manualEdges.value.map(e => ({
+      from: e.from,
+      to: e.to,
+      cost: e.cost,
+      capacity: e.capacity,
+      weight: e.cost
+    }))
+    
+    // 计算统计信息
+    const stats = {
+      num_nodes: nodes.length,
+      num_edges: edges.length,
+      avg_cost: edges.reduce((sum, e) => sum + e.cost, 0) / edges.length,
+      avg_capacity: edges.reduce((sum, e) => sum + e.capacity, 0) / edges.length
+    }
+    
+    // 生成拓扑图（使用API）
+    // 注：这里我们复用生成接口，但使用手动数据
+    // 实际上我们应该创建一个新的API端点，但为了简单起见，我们直接构造结果
+    
+    networkData.value = {
+      nodes,
+      edges,
+      stats,
+      topology_image: null, // 手动模式暂不生成拓扑图
+      config: { mode: 'manual' }
+    }
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    loading.value = false
+  }
+}
+</script>
+
+<style scoped>
+.panel {
+  padding: 1rem;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 400px 1fr;
+  gap: 2rem;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+h2 {
+  color: #667eea;
+  margin: 0 0 1.5rem;
+  font-size: 1.8rem;
+}
+
+h3 {
+  color: #333;
+  border-bottom: 2px solid #667eea;
+  padding-bottom: 0.5rem;
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+label {
+  font-weight: 600;
+  color: #555;
+  font-size: 0.95rem;
+}
+
+input[type="number"] {
+  padding: 0.6rem;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.range-input {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.range-input input {
+  flex: 1;
+}
+
+.range-input span {
+  color: #666;
+  font-weight: bold;
+}
+
+.hint {
+  font-size: 0.85rem;
+  color: #888;
+  font-style: italic;
+}
+
+.button-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+button {
+  padding: 0.75rem;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s;
+}
+
+button.primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+button.primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+button.secondary {
+  background: #f0f0f0;
+  color: #666;
+}
+
+button.secondary:hover {
+  background: #e0e0e0;
+}
+
+button.success {
+  background: #10b981;
+  color: white;
+}
+
+button.success:hover:not(:disabled) {
+  background: #059669;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.error-box {
+  padding: 1rem;
+  background: #fee;
+  border: 2px solid #fcc;
+  border-radius: 8px;
+  color: #c33;
+  font-weight: 500;
+}
+
+.success-box {
+  padding: 1rem;
+  background: #d1fae5;
+  border: 2px solid #6ee7b7;
+  border-radius: 8px;
+  color: #065f46;
+  font-weight: 500;
+}
+
+.result-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+.stat-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 1rem;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.stat-label {
+  font-size: 0.9rem;
+  opacity: 0.9;
+  margin-bottom: 0.3rem;
+}
+
+.stat-value {
+  font-size: 1.8rem;
+  font-weight: bold;
+}
+
+.topology-image {
+  background: #f9f9f9;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: center;
+}
+
+.topology-image img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 400px;
+  background: #f9f9f9;
+  border: 2px dashed #ddd;
+  border-radius: 8px;
+  color: #999;
+  font-size: 1.1rem;
+}
+
+@media (max-width: 1024px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* 模式切换按钮 */
+.mode-selector {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  justify-content: center;
+}
+
+.mode-btn {
+  flex: 1;
+  max-width: 200px;
+  padding: 1rem 1.5rem;
+  border: 2px solid #ddd;
+  border-radius: 12px;
+  background: white;
+  color: #666;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.mode-btn:hover {
+  border-color: #667eea;
+  color: #667eea;
+  transform: translateY(-2px);
+}
+
+.mode-btn.active {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-color: #667eea;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+/* 手动编辑区域 */
+.edges-editor {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: #f9f9f9;
+  border-radius: 8px;
+  border: 2px solid #e0e0e0;
+}
+
+.edges-editor h4 {
+  margin: 0 0 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.add-edge-btn {
+  padding: 0.4rem 0.8rem;
+  border: none;
+  border-radius: 6px;
+  background: #10b981;
+  color: white;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.add-edge-btn:hover {
+  background: #059669;
+}
+
+.edges-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.edge-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+}
+
+.edge-item select {
+  padding: 0.5rem;
+  border: 2px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.95rem;
+  min-width: 60px;
+}
+
+.edge-item input[type="number"] {
+  padding: 0.5rem;
+  border: 2px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.95rem;
+  width: 80px;
+}
+
+.edge-item select:focus,
+.edge-item input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.edge-item span {
+  font-weight: bold;
+  color: #666;
+}
+
+.remove-btn {
+  padding: 0.4rem 0.6rem;
+  border: none;
+  border-radius: 4px;
+  background: #ef4444;
+  color: white;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.remove-btn:hover {
+  background: #dc2626;
+}
+
+@media (max-width: 768px) {
+  .edge-item {
+    flex-wrap: wrap;
+  }
+  
+  .edge-item input,
+  .edge-item select {
+    flex: 1;
+    min-width: 70px;
+  }
+}
+
+/* 动画 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+</style>

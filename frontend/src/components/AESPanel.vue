@@ -11,14 +11,14 @@
         <button @click="encrypt" :disabled="encLoading">{{ encLoading ? '加密中...' : '🔒 加密' }}</button>
         <div v-if="encError" style="padding: 1rem; background: #fee; border-radius: 6px; color: #c33;">{{ encError }}</div>
         <div v-if="encResult">
-          <label>密文 (Base64):</label>
+          <label>密文 (十六进制):</label>
           <textarea :value="encResult.encrypted" readonly rows="4" style="background: #f5f5f5; font-family: monospace;"></textarea>
           <button @click="copy(encResult.encrypted)" style="background: #4caf50;">📋 复制密文</button>
         </div>
       </div>
       <div class="section">
         <h3>🔓 解密</h3>
-        <label>密文 (Base64):</label>
+        <label>密文 (十六进制):</label>
         <textarea v-model="ciphertext" rows="5" placeholder="输入要解密的密文..."></textarea>
         <label>密钥:</label>
         <input v-model="decKey" placeholder="输入解密密钥" />
@@ -38,6 +38,7 @@
         <li>使用自实现的 AES-128 加密算法</li>
         <li>密钥会自动调整为16字节</li>
         <li>解密时必须使用相同的密钥</li>
+        <li>密文以十六进制字符串格式输出</li>
       </ul>
       <button @click="loadExample" style="background: #ff9800; margin-top: 1rem;">💡 加载示例</button>
     </div>

@@ -13,6 +13,7 @@
           <label><input type="radio" v-model="algo" value="prim" /> Prim</label>
         </div>
         <button @click="calc" :disabled="loading">{{ loading ? '计算中...' : '计算MST' }}</button>
+        <button @click="loadConfiguredNetwork" style="background: #10b981; color: white;">加载配置网络</button>
         <button @click="example" style="background: #eee; color: #666;">示例数据</button>
       </div>
       <div class="section">
@@ -23,6 +24,13 @@
             <div>算法: {{ result.algorithm }}</div>
             <div style="font-size: 1.5rem; font-weight: bold;">总权重: {{ result.total_weight }}</div>
           </div>
+          
+          <!-- 可视化图片 -->
+          <div v-if="result.visualization" style="margin-bottom: 1.5rem; background: #f9f9f9; border: 2px solid #e0e0e0; border-radius: 8px; padding: 1rem;">
+            <h4 style="margin-top: 0;">算法可视化:</h4>
+            <img :src="'data:image/png;base64,' + result.visualization" alt="MST可视化" style="max-width: 100%; height: auto; border-radius: 4px;" />
+          </div>
+          
           <h4>MST 边:</h4>
           <div v-for="(e, i) in result.mst_edges" :key="i" style="padding: 0.5rem; background: #f5f5f5; margin: 0.5rem 0; border-left: 4px solid #667eea; border-radius: 4px;">
             {{ e.from }} → {{ e.to }} <span style="color: #764ba2; font-weight: bold;">({{ e.weight }})</span>
@@ -34,7 +42,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import { api } from '../api/backend.js'
 const nodes = ref('1,2,3,4,5')
 const edges = ref('1-2-10\n1-3-15\n2-3-4\n2-4-5\n3-4-8')
@@ -42,6 +50,14 @@ const algo = ref('kruskal')
 const loading = ref(false)
 const result = ref(null)
 const error = ref(null)
+
+// 获取全局网络配置
+const globalNetwork = inject('globalNetwork', null)
+
+onMounted(() => {
+  // 不再自动加载，由用户手动点击“加载配置网络”按钮
+  // loadNetworkFromStorage()
+})
 const parseNodes = computed(() => nodes.value.split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n)))
 const parseEdges = computed(() => edges.value.split('\n').map(line => {
   const p = line.trim().split('-')
@@ -57,6 +73,35 @@ async function calc() {
   } catch (err) { error.value = err.message } finally { loading.value = false }
 }
 function example() { nodes.value = '1,2,3,4,5,6'; edges.value = '1-2-6\n1-4-12\n1-3-8\n2-5-7\n2-3-3\n3-4-5\n3-6-9\n4-6-4\n5-6-11' }
+
+function loadNetworkFromStorage() {
+  try {
+    const data = localStorage.getItem('campus-network-data')
+    if (data) {
+      const network = JSON.parse(data)
+      console.log('加载的网络数据:', network)
+      // 转换为面板格式
+      nodes.value = network.nodes.map(n => n.id).join(',')
+      edges.value = network.edges.map(e => `${e.from}-${e.to}-${e.weight || e.cost}`).join('\n')
+      return true
+    }
+    return false
+  } catch (err) {
+    console.error('加载网络数据失败:', err)
+    return false
+  }
+}
+
+function loadConfiguredNetwork() {
+  const loaded = loadNetworkFromStorage()
+  if (loaded) {
+    error.value = null
+    // 显示成功消息（可选）
+    console.log('网络配置已加载')
+  } else {
+    error.value = '未找到配置的网络，请先在“网络配置”标签页生成并应用网络'
+  }
+}
 </script>
 
 <style scoped>

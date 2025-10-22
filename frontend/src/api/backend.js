@@ -78,4 +78,17 @@ export const api = {
       body: JSON.stringify({ encrypted, key }),
     })
   },
+
+  // 获取默认网络配置
+  getDefaultNetworkConfig() {
+    return request('/network/config/default')
+  },
+
+  // 生成网络拓扑
+  generateNetwork(config = {}) {
+    return request('/network/generate', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    })
+  },
 }

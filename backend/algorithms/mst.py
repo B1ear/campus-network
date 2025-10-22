@@ -28,29 +28,58 @@ def parse_input(data_str):
 # 2. Prim 算法
 # =========================================================
 def prim_mst(n, edges):
-    selected = [False] * (n + 1)
-    adj = {i: [] for i in range(1, n + 1)}
+    """
+    Prim算法实现，支持0索引节点
+    
+    Args:
+        n: 节点数量（从0到n-1或从1到n）
+        edges: 边列表 [(u, v, weight), ...]
+    
+    Returns:
+        (mst_edges, total_cost)
+    """
+    if not edges:
+        return [], 0
+    
+    # 自动检测节点的最小值（判断是0索引还是1索引）
+    all_nodes = set()
+    for u, v, w in edges:
+        all_nodes.add(u)
+        all_nodes.add(v)
+    
+    min_node = min(all_nodes)
+    max_node = max(all_nodes)
+    node_count = max_node - min_node + 1
+    
+    # 构建邻接表
+    adj = {i: [] for i in range(min_node, max_node + 1)}
     for u, v, w in edges:
         adj[u].append((v, w))
         adj[v].append((u, w))
-
-    selected[1] = True
+    
+    # Prim算法
+    selected = {i: False for i in range(min_node, max_node + 1)}
+    start_node = min_node  # 从最小的节点开始
+    selected[start_node] = True
     mst_edges = []
     total_cost = 0
-
-    for _ in range(n - 1):
+    
+    for _ in range(node_count - 1):
         min_w = float("inf")
         a = b = -1
-        for u in range(1, n + 1):
+        
+        for u in range(min_node, max_node + 1):
             if selected[u]:
                 for v, w in adj[u]:
                     if not selected[v] and w < min_w:
                         min_w = w
                         a, b = u, v
+        
         if a != -1:
             selected[b] = True
             mst_edges.append((a, b, min_w))
             total_cost += min_w
+    
     return mst_edges, total_cost
 
 

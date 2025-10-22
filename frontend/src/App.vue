@@ -18,6 +18,7 @@
       </div>
 
       <div class="content">
+        <NetworkConfigPanel v-if="activeTab === 'network'" />
         <MSTPanel v-if="activeTab === 'mst'" />
         <MaxFlowPanel v-if="activeTab === 'maxflow'" />
         <AESPanel v-if="activeTab === 'aes'" />
@@ -31,14 +32,25 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, provide } from 'vue'
 import MSTPanel from './components/MSTPanel.vue'
 import MaxFlowPanel from './components/MaxFlowPanel.vue'
 import AESPanel from './components/AESPanel.vue'
+import NetworkConfigPanel from './components/NetworkConfigPanel.vue'
 
-const activeTab = ref('mst')
+const activeTab = ref('network')
+const globalNetwork = ref(null)
+
+// 提供全局网络状态
+const setGlobalNetwork = (networkData) => {
+  globalNetwork.value = networkData
+}
+
+provide('globalNetwork', globalNetwork)
+provide('setGlobalNetwork', setGlobalNetwork)
 
 const tabs = [
+  { id: 'network', name: '网络配置', icon: '🌐' },
   { id: 'mst', name: '最小生成树', icon: '🌲' },
   { id: 'maxflow', name: '最大流', icon: '💧' },
   { id: 'aes', name: 'AES加密', icon: '🔐' },
