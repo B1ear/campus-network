@@ -1,7 +1,6 @@
 <template>
   <div class="traffic-sim-panel">
-    <h2 class="panel-title">🎮 交互式流量仿真</h2>
-    <p class="panel-description">实时模拟网络流量传输 · 动态对比不同策略</p>
+    <h2>🎮 交互式流量仿真</h2>
 
     <div v-if="!hasNetwork" class="empty-state">
       <div class="empty-icon">🌐</div>
@@ -38,15 +37,6 @@
               <label>流量速率 (单位/秒)</label>
               <input v-model.number="simConfig.flowRate" type="number" min="10" max="1000" step="10" :disabled="isRunning" />
             </div>
-
-            <div class="control-group">
-              <label>仿真速度</label>
-              <select v-model="simConfig.speed" :disabled="isRunning">
-                <option value="slow">慢速 (0.5x)</option>
-                <option value="normal">正常 (1x)</option>
-                <option value="fast">快速 (2x)</option>
-              </select>
-            </div>
           </div>
 
           <!-- 策略选择 -->
@@ -80,16 +70,10 @@
           <!-- 控制按钮 -->
           <div class="control-buttons">
             <button @click="startSimulation" :disabled="isRunning" class="btn btn-primary">
-              ▶️ 开始仿真
+              ▶️ 开始
             </button>
-            <button @click="pauseSimulation" :disabled="!isRunning || isPaused" class="btn btn-warning">
-              ⏸️ 暂停
-            </button>
-            <button @click="resumeSimulation" :disabled="!isRunning || !isPaused" class="btn btn-success">
-              ▶️ 继续
-            </button>
-            <button @click="stopSimulation" :disabled="!isRunning" class="btn btn-danger">
-              ⏹️ 停止
+            <button @click="togglePause" :disabled="!isRunning" :class="isPaused ? 'btn btn-success' : 'btn btn-warning'">
+              {{ isPaused ? '▶️ 继续' : '⏸️ 暂停' }}
             </button>
             <button @click="resetSimulation" class="btn btn-secondary">
               🔄 重置
@@ -139,17 +123,26 @@
       <!-- 可视化区域 -->
       <div class="visualization-area">
         <div class="network-canvas-container">
-          <svg ref="svgCanvas" class="network-canvas" :width="canvasSize.width" :height="canvasSize.height">
+          <svg 
+            ref="svgCanvas" 
+            class="network-canvas" 
+            :viewBox="`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`"
+            @mousedown="handleMouseDown"
+            @mousemove="handleMouseMove"
+            @mouseup="handleMouseUp"
+            @mouseleave="handleMouseUp"
+            @wheel="handleWheel"
+          >
             <!-- 定义箭头标记 -->
             <defs>
-              <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
-                <polygon points="0 0, 10 3, 0 6" fill="#666" />
+              <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="2.5" orient="auto">
+                <polygon points="0 0, 8 2.5, 0 5" fill="#666" />
               </marker>
-              <marker id="arrowhead-flow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
-                <polygon points="0 0, 10 3, 0 6" fill="#4299e1" />
+              <marker id="arrowhead-flow" markerWidth="8" markerHeight="8" refX="7" refY="2.5" orient="auto">
+                <polygon points="0 0, 8 2.5, 0 5" fill="#4299e1" />
               </marker>
-              <marker id="arrowhead-congestion" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
-                <polygon points="0 0, 10 3, 0 6" fill="#fc8181" />
+              <marker id="arrowhead-congestion" markerWidth="8" markerHeight="8" refX="7" refY="2.5" orient="auto">
+                <polygon points="0 0, 8 2.5, 0 5" fill="#fc8181" />
               </marker>
             </defs>
 
@@ -158,10 +151,10 @@
               <g v-for="edge in visualEdges" :key="`edge-${edge.from}-${edge.to}`">
                 <!-- 边线 -->
                 <line
-                  :x1="nodePositions[edge.from]?.x"
-                  :y1="nodePositions[edge.from]?.y"
-                  :x2="nodePositions[edge.to]?.x"
-                  :y2="nodePositions[edge.to]?.y"
+                  :x1="getEdgeStartX(edge)"
+                  :y1="getEdgeStartY(edge)"
+                  :x2="getEdgeEndX(edge)"
+                  :y2="getEdgeEndY(edge)"
                   :stroke="getEdgeColor(edge)"
                   :stroke-width="getEdgeWidth(edge)"
                   :opacity="getEdgeOpacity(edge)"
@@ -170,39 +163,17 @@
                 />
                 <!-- 流量动画 -->
                 <circle
-                  v-if="edge.flowAnimation > 0"
+                  v-if="edge.flowAnimation > 0 && isRunning && !isPaused"
                   :r="4"
                   fill="#4299e1"
                   class="flow-particle"
                 >
                   <animateMotion
-                    :dur="`${1 / simConfig.speed}s`"
+                    dur="1s"
                     repeatCount="indefinite"
-                    :path="`M ${nodePositions[edge.from]?.x} ${nodePositions[edge.from]?.y} L ${nodePositions[edge.to]?.x} ${nodePositions[edge.to]?.y}`"
+                    :path="`M ${getEdgeStartX(edge)} ${getEdgeStartY(edge)} L ${getEdgeEndX(edge)} ${getEdgeEndY(edge)}`"
                   />
                 </circle>
-                <!-- 流量标签（带背景） -->
-                <g v-if="edge.currentFlow > 0">
-                  <rect
-                    :x="(nodePositions[edge.from]?.x + nodePositions[edge.to]?.x) / 2 - 25"
-                    :y="(nodePositions[edge.from]?.y + nodePositions[edge.to]?.y) / 2 - 20"
-                    width="50"
-                    height="16"
-                    rx="3"
-                    fill="white"
-                    opacity="0.95"
-                    stroke="#cbd5e0"
-                    stroke-width="1"
-                  />
-                  <text
-                    :x="(nodePositions[edge.from]?.x + nodePositions[edge.to]?.x) / 2"
-                    :y="(nodePositions[edge.from]?.y + nodePositions[edge.to]?.y) / 2 - 8"
-                    class="flow-label"
-                    text-anchor="middle"
-                  >
-                    {{ edge.currentFlow.toFixed(0) }}/{{ edge.capacity }}
-                  </text>
-                </g>
               </g>
             </g>
 
@@ -239,6 +210,34 @@
                 >
                   ↓{{ node.throughput.toFixed(0) }}
                 </text>
+              </g>
+            </g>
+
+            <!-- 绘制边标签（在节点之上） -->
+            <g class="edge-labels-layer">
+              <g v-for="edge in visualEdges" :key="`edge-label-${edge.from}-${edge.to}`">
+                <g v-if="edge.currentFlow > 0">
+                  <rect
+                    :x="(getEdgeStartX(edge) + getEdgeEndX(edge)) / 2 - 25"
+                    :y="(getEdgeStartY(edge) + getEdgeEndY(edge)) / 2 - 20"
+                    width="50"
+                    height="16"
+                    rx="3"
+                    fill="white"
+                    opacity="0.75"
+                    stroke="#cbd5e0"
+                    stroke-width="1"
+                  />
+                  <text
+                    :x="(getEdgeStartX(edge) + getEdgeEndX(edge)) / 2"
+                    :y="(getEdgeStartY(edge) + getEdgeEndY(edge)) / 2 - 8"
+                    class="flow-label"
+                    text-anchor="middle"
+                    opacity="0.85"
+                  >
+                    {{ edge.currentFlow.toFixed(0) }}/{{ edge.capacity }}
+                  </text>
+                </g>
               </g>
             </g>
           </svg>
@@ -306,7 +305,6 @@ const simConfig = ref({
   source: 0,
   target: 5,
   flowRate: 100,
-  speed: 1,
   strategy: 'balanced'
 })
 
@@ -325,18 +323,14 @@ const visualNodes = ref([])
 const visualEdges = ref([])
 const nodePositions = ref({})
 const activePaths = ref([])
-const canvasSize = ref({ width: 1000, height: 600 })
+const canvasSize = ref({ width: 1200, height: 700 })
 
-// 速度映射
-const speedMap = {
-  slow: 0.5,
-  normal: 1,
-  fast: 2
-}
+// 平移和缩放状态
+const viewBox = ref({ x: 0, y: 0, width: 1200, height: 700 })
+const isDragging = ref(false)
+const dragStart = ref({ x: 0, y: 0 })
+const svgCanvas = ref(null)
 
-watch(() => simConfig.value.speed, (newSpeed) => {
-  simConfig.value.speed = speedMap[newSpeed] || 1
-})
 
 // 可用节点
 const availableNodes = computed(() => {
@@ -365,7 +359,7 @@ let animationId = null
 let lastTime = 0
 
 // 初始化可视化
-const initVisualization = () => {
+const initVisualization = (forceRecalculate = false) => {
   if (!globalNetwork.value) return
 
   // 初始化节点
@@ -373,7 +367,8 @@ const initVisualization = () => {
     id: node.id,
     throughput: 0,
     isSource: false,
-    isTarget: false
+    isTarget: false,
+    isUsed: false // 记录节点是否在仿真中使用
   }))
 
   // 初始化边
@@ -384,11 +379,15 @@ const initVisualization = () => {
     currentFlow: 0,
     utilization: 0,
     flowAnimation: 0,
-    isActive: false
+    isActive: false,
+    flowDirection: null // 记录实际流量方向: 'forward', 'reverse', 或 null
   }))
 
   // 计算节点位置（力导向布局）
-  calculateNodePositions()
+  // 只在网络变化或强制重算时才重新计算位置
+  if (forceRecalculate || Object.keys(nodePositions.value).length === 0) {
+    calculateNodePositions()
+  }
 }
 
 // 计算节点位置（使用力导向布局算法）
@@ -400,23 +399,32 @@ const calculateNodePositions = () => {
   
   if (nodes.length === 0) return
   
-  // 初始化随机位置
+  // 初始化随机位置（使用固定种子以保证一致性）
   const positions = {}
   const velocities = {}
+  
+  // 使用节点ID作为种子来生成伺随机位置
+  const seededRandom = (seed) => {
+    const x = Math.sin(seed) * 10000
+    return x - Math.floor(x)
+  }
+  
   nodes.forEach(node => {
+    const seedX = node.id * 12345 + 67890
+    const seedY = node.id * 54321 + 9876
     positions[node.id] = {
-      x: Math.random() * (width - 200) + 100,
-      y: Math.random() * (height - 200) + 100
+      x: seededRandom(seedX) * (width - 200) + 100,
+      y: seededRandom(seedY) * (height - 200) + 100
     }
     velocities[node.id] = { x: 0, y: 0 }
   })
   
   // 力导向布局参数
   const iterations = 150
-  const repulsionStrength = 3000 // 节点间斥力
-  const attractionStrength = 0.02 // 边的引力
+  const repulsionStrength = 12000 // 节点间斥力（大幅增加）
+  const attractionStrength = 0.01 // 边的引力（继续减小）
   const dampening = 0.85 // 阻尼系数
-  const minDistance = 100 // 最小距离
+  const minDistance = 250 // 最小距离（大幅增加）
   
   // 迭代计算
   for (let iter = 0; iter < iterations; iter++) {
@@ -481,8 +489,8 @@ const calculateNodePositions = () => {
       positions[node.id].x += velocities[node.id].x
       positions[node.id].y += velocities[node.id].y
       
-      // 边界约束
-      const margin = 60
+      // 边界约束（增大边界）
+      const margin = 80
       positions[node.id].x = Math.max(margin, Math.min(width - margin, positions[node.id].x))
       positions[node.id].y = Math.max(margin, Math.min(height - margin, positions[node.id].y))
     })
@@ -505,12 +513,25 @@ const startSimulation = async () => {
     congestedLinks: 0
   }
 
-  // 标记源和目标节点
+  // 重置所有节点状态
   visualNodes.value.forEach(node => {
-    node.isSource = node.id === simConfig.value.source
-    node.isTarget = node.id === simConfig.value.target
+    node.isSource = false
+    node.isTarget = false
+    node.isUsed = false
     node.throughput = 0
   })
+
+  // 标记源和目标节点
+  const sourceNode = visualNodes.value.find(n => n.id === simConfig.value.source)
+  const targetNode = visualNodes.value.find(n => n.id === simConfig.value.target)
+  if (sourceNode) {
+    sourceNode.isSource = true
+    sourceNode.isUsed = true
+  }
+  if (targetNode) {
+    targetNode.isTarget = true
+    targetNode.isUsed = true
+  }
 
   // 计算路径
   await calculatePaths()
@@ -519,7 +540,12 @@ const startSimulation = async () => {
   lastTime = performance.now()
   animationLoop()
   
-  showToast('仿真已开始', 'success')
+  const strategyName = {
+    single: '单路径',
+    balanced: '负载均衡',
+    congestion: '拥塞避免'
+  }[strategy] || strategy
+  showToast(`🚀 仿真启动成功 | 策略: ${strategyName} | 路径数: ${activePaths.value.length}`, 'success')
 }
 
 // 计算路径（简化版本，实际应调用后端）
@@ -531,7 +557,7 @@ const calculatePaths = async () => {
   const paths = findKPaths(source, target, strategy === 'single' ? 1 : 3)
   
   if (paths.length === 0) {
-    showToast(`无法找到从节点 ${source} 到节点 ${target} 的路径！`, 'error')
+    showToast(`❌ 路径查找失败 | 无法从节点 ${source} 到达节点 ${target}`, 'error')
     stopSimulation()
     return
   }
@@ -540,9 +566,15 @@ const calculatePaths = async () => {
   const pathCapacities = paths.map(pathNodes => {
     let minCapacity = Infinity
     for (let i = 0; i < pathNodes.length - 1; i++) {
-      const edge = visualEdges.value.find(
+      // 查找边（无向图：正向或反向）
+      let edge = visualEdges.value.find(
         e => e.from === pathNodes[i] && e.to === pathNodes[i + 1]
       )
+      if (!edge) {
+        edge = visualEdges.value.find(
+          e => e.from === pathNodes[i + 1] && e.to === pathNodes[i]
+        )
+      }
       if (edge && edge.capacity < minCapacity) {
         minCapacity = edge.capacity
       }
@@ -565,7 +597,7 @@ const calculatePaths = async () => {
     // 显示警告
     const pathsInfo = strategy === 'single' ? '1条路径' : `${paths.length}条路径`
     showToast(
-      `流量速率超出网络容量！请求: ${requestedFlow} 单位/秒，最大: ${totalCapacity.toFixed(0)} 单位/秒 (${pathsInfo})，将使用最大容量进行仿真。`,
+      `⚠️ 容量限制 | 请求: ${requestedFlow} 单位/秒 > 最大: ${totalCapacity.toFixed(0)} 单位/秒 (${pathsInfo}) | 已自动调整`,
       'warning'
     )
   }
@@ -578,10 +610,23 @@ const calculatePaths = async () => {
     if (strategy === 'single') {
       // 单路径：使用实际流量，但不超过路径容量
       flow = Math.min(actualFlowRate, pathCapacity)
-    } else {
-      // 多路径：按容量比例分配
+    } else if (strategy === 'balanced') {
+      // 负载均衡：按容量比例分配，最大化吞吐量
       flow = (pathCapacity / totalCapacity) * actualFlowRate
       // 确保不超过单条路径容量
+      flow = Math.min(flow, pathCapacity)
+    } else if (strategy === 'congestion') {
+      // 拥塞避免：保守分配，限制每条路径利用率不超过65%
+      const maxUtilization = 0.65 // 目标利用率
+      const maxFlowForPath = pathCapacity * maxUtilization
+      // 按比例分配，但不超过65%利用率
+      flow = Math.min(
+        (pathCapacity / totalCapacity) * actualFlowRate,
+        maxFlowForPath
+      )
+    } else {
+      // 默认：负载均衡
+      flow = (pathCapacity / totalCapacity) * actualFlowRate
       flow = Math.min(flow, pathCapacity)
     }
 
@@ -605,6 +650,16 @@ const calculatePaths = async () => {
   }
 
   stats.value.activePaths = activePaths.value.length
+
+  // 标记路径上的节点为已使用
+  activePaths.value.forEach(path => {
+    path.nodes.forEach(nodeId => {
+      const node = visualNodes.value.find(n => n.id === nodeId)
+      if (node) {
+        node.isUsed = true
+      }
+    })
+  })
 }
 
 // 简单的BFS找路径（前端模拟）
@@ -612,11 +667,15 @@ const findKPaths = (source, target, k) => {
   const paths = []
   const edges = globalNetwork.value.edges
 
-  // 构建邻接表
+  // 构建邻接表（无向图：双向添加）
   const graph = {}
   edges.forEach(edge => {
+    // 添加正向边
     if (!graph[edge.from]) graph[edge.from] = []
     graph[edge.from].push(edge.to)
+    // 添加反向边（无向图）
+    if (!graph[edge.to]) graph[edge.to] = []
+    graph[edge.to].push(edge.from)
   })
 
   // BFS找路径
@@ -666,12 +725,13 @@ const animationLoop = (currentTime = performance.now()) => {
 const updateTraffic = (deltaTime) => {
   // 使用实际流量速率（如果被限制）
   const effectiveFlowRate = simConfig.value._actualFlowRate || simConfig.value.flowRate
-  const flowIncrement = effectiveFlowRate * deltaTime * simConfig.value.speed
+  const flowIncrement = effectiveFlowRate * deltaTime
 
   // 重置边的流量
   visualEdges.value.forEach(edge => {
     edge.currentFlow = 0
     edge.isActive = false
+    edge.flowDirection = null
   })
 
   // 根据活跃路径更新流量
@@ -680,12 +740,21 @@ const updateTraffic = (deltaTime) => {
       const from = path.nodes[i]
       const to = path.nodes[i + 1]
       
-      const edge = visualEdges.value.find(e => e.from === from && e.to === to)
+      // 查找边（无向图：正向或反向）
+      let edge = visualEdges.value.find(e => e.from === from && e.to === to)
+      let isReverse = false
+      if (!edge) {
+        edge = visualEdges.value.find(e => e.from === to && e.to === from)
+        isReverse = true
+      }
+      
       if (edge) {
         edge.currentFlow += path.flow
         edge.utilization = edge.currentFlow / edge.capacity
         edge.isActive = true
         edge.flowAnimation = path.flow
+        // 记录流量方向
+        edge.flowDirection = isReverse ? 'reverse' : 'forward'
       }
     }
   })
@@ -696,9 +765,17 @@ const updateTraffic = (deltaTime) => {
       const effectiveFlowRate = simConfig.value._actualFlowRate || simConfig.value.flowRate
       node.throughput = effectiveFlowRate
     } else if (node.isTarget) {
-      const incomingFlow = visualEdges.value
-        .filter(e => e.to === node.id)
-        .reduce((sum, e) => sum + e.currentFlow, 0)
+      // 计算流入目标节点的总流量（考虑流量方向）
+      let incomingFlow = 0
+      visualEdges.value.forEach(edge => {
+        if (edge.flowDirection === 'forward' && edge.to === node.id) {
+          // 正向流量流入
+          incomingFlow += edge.currentFlow
+        } else if (edge.flowDirection === 'reverse' && edge.from === node.id) {
+          // 反向流量流入
+          incomingFlow += edge.currentFlow
+        }
+      })
       node.throughput = incomingFlow
     } else {
       node.throughput = 0
@@ -723,7 +800,8 @@ const updateStats = () => {
 // 暂停仿真
 const pauseSimulation = () => {
   isPaused.value = true
-  showToast('仿真已暂停', 'info')
+  const utilization = (stats.value.avgUtilization * 100).toFixed(1)
+  showToast(`⏸️ 仿真已暂停 | 平均利用率: ${utilization}% | 已传输: ${stats.value.totalTransferred.toFixed(0)}`, 'info')
 }
 
 // 继续仿真
@@ -731,7 +809,16 @@ const resumeSimulation = () => {
   isPaused.value = false
   lastTime = performance.now()
   animationLoop()
-  showToast('仿真已继续', 'success')
+  showToast('▶️ 仿真继续运行', 'success')
+}
+
+// 切换暂停/继续
+const togglePause = () => {
+  if (isPaused.value) {
+    resumeSimulation()
+  } else {
+    pauseSimulation()
+  }
 }
 
 // 停止仿真
@@ -742,14 +829,16 @@ const stopSimulation = () => {
     cancelAnimationFrame(animationId)
     animationId = null
   }
-  showToast('仿真已停止', 'info')
+  const transferred = stats.value.totalTransferred.toFixed(0)
+  const utilization = (stats.value.avgUtilization * 100).toFixed(1)
+  showToast(`⏹️ 仿真已停止 | 总传输: ${transferred} | 平均利用率: ${utilization}%`, 'info')
 }
 
 // 重置仿真
 const resetSimulation = () => {
   stopSimulation()
   initVisualization()
-  showToast('仿真已重置', 'info')
+  showToast('🔄 仿真环境已重置，可以开始新的仿真', 'info')
 }
 
 // 节点选择
@@ -763,13 +852,16 @@ const getNodeRadius = (node) => {
 }
 
 const getNodeColor = (node) => {
-  if (node.isSource) return '#48bb78'
-  if (node.isTarget) return '#fc8181'
-  return '#4299e1'
+  if (node.isSource) return '#48bb78' // 源节点：绿色
+  if (node.isTarget) return '#fc8181' // 目标节点：红色
+  if (isRunning.value && !node.isUsed) return '#ffffff' // 仿真中未使用：白色
+  return '#4299e1' // 默认/使用中：蓝色
 }
 
 const getNodeStroke = (node) => {
-  return node.isSource || node.isTarget ? '#2d3748' : '#2c5282'
+  if (node.isSource || node.isTarget) return '#2d3748'
+  if (isRunning.value && !node.isUsed) return '#cbd5e0' // 未使用节点：浅灰边框
+  return '#2c5282'
 }
 
 const getNodeStrokeWidth = (node) => {
@@ -785,7 +877,9 @@ const getEdgeColor = (edge) => {
 
 const getEdgeWidth = (edge) => {
   if (edge.isActive) {
-    return 2 + (edge.utilization * 4)
+    // 确保利用率不超过100%，以防止箭头过大
+    const clampedUtilization = Math.min(edge.utilization, 1.0)
+    return 2 + (clampedUtilization * 4)
   }
   return 2
 }
@@ -800,6 +894,98 @@ const getEdgeMarker = (edge) => {
   return 'url(#arrowhead)'
 }
 
+// 获取边的起点和终点（根据流量方向）
+const getEdgeStartX = (edge) => {
+  if (edge.flowDirection === 'reverse') {
+    return nodePositions.value[edge.to]?.x
+  }
+  return nodePositions.value[edge.from]?.x
+}
+
+const getEdgeStartY = (edge) => {
+  if (edge.flowDirection === 'reverse') {
+    return nodePositions.value[edge.to]?.y
+  }
+  return nodePositions.value[edge.from]?.y
+}
+
+const getEdgeEndX = (edge) => {
+  if (edge.flowDirection === 'reverse') {
+    return nodePositions.value[edge.from]?.x
+  }
+  return nodePositions.value[edge.to]?.x
+}
+
+const getEdgeEndY = (edge) => {
+  if (edge.flowDirection === 'reverse') {
+    return nodePositions.value[edge.from]?.y
+  }
+  return nodePositions.value[edge.to]?.y
+}
+
+// 处理鼠标拖拽事件
+const handleMouseDown = (event) => {
+  // 只在点击背景时开始拖拽，不在节点上
+  if (event.target.tagName !== 'svg' && !event.target.closest('.edges-layer')) return
+  
+  isDragging.value = true
+  dragStart.value = {
+    x: event.clientX,
+    y: event.clientY,
+    viewX: viewBox.value.x,
+    viewY: viewBox.value.y
+  }
+  event.preventDefault()
+}
+
+const handleMouseMove = (event) => {
+  if (!isDragging.value) return
+  
+  const dx = (event.clientX - dragStart.value.x) * (viewBox.value.width / canvasSize.value.width)
+  const dy = (event.clientY - dragStart.value.y) * (viewBox.value.height / canvasSize.value.height)
+  
+  viewBox.value.x = dragStart.value.viewX - dx
+  viewBox.value.y = dragStart.value.viewY - dy
+}
+
+const handleMouseUp = () => {
+  isDragging.value = false
+}
+
+// 处理滚轮缩放
+const handleWheel = (event) => {
+  event.preventDefault()
+  
+  // 获取鼠标在SVG中的位置
+  const svg = svgCanvas.value
+  if (!svg) return
+  
+  const rect = svg.getBoundingClientRect()
+  const mouseX = event.clientX - rect.left
+  const mouseY = event.clientY - rect.top
+  
+  // 转换为视图坐标
+  const viewMouseX = viewBox.value.x + (mouseX / rect.width) * viewBox.value.width
+  const viewMouseY = viewBox.value.y + (mouseY / rect.height) * viewBox.value.height
+  
+  // 缩放因子
+  const scaleFactor = event.deltaY > 0 ? 1.1 : 0.9
+  
+  // 限制缩放范围（0.5x 到 3x）
+  const newWidth = viewBox.value.width * scaleFactor
+  const newHeight = viewBox.value.height * scaleFactor
+  
+  if (newWidth > canvasSize.value.width * 3 || newWidth < canvasSize.value.width * 0.5) {
+    return
+  }
+  
+  // 以鼠标为中心缩放
+  viewBox.value.width = newWidth
+  viewBox.value.height = newHeight
+  viewBox.value.x = viewMouseX - (mouseX / rect.width) * newWidth
+  viewBox.value.y = viewMouseY - (mouseY / rect.height) * newHeight
+}
+
 // 生命周期
 onMounted(() => {
   initVisualization()
@@ -811,7 +997,8 @@ onUnmounted(() => {
 
 // 监听网络变化
 watch(() => globalNetwork.value, () => {
-  initVisualization()
+  // 网络变化时强制重新计算位置
+  initVisualization(true)
 }, { deep: true })
 </script>
 
@@ -823,18 +1010,11 @@ watch(() => globalNetwork.value, () => {
   flex-direction: column;
 }
 
-.panel-title {
-  font-size: 2rem;
+.traffic-sim-panel > h2 {
+  font-size: 1.8rem;
   font-weight: 700;
   color: #2d3748;
-  margin: 0 0 0.5rem;
-  text-align: center;
-}
-
-.panel-description {
-  text-align: center;
-  color: #718096;
-  margin: 0 0 2rem;
+  margin: 0 0 1.5rem;
 }
 
 .sim-container {
@@ -952,7 +1132,7 @@ watch(() => globalNetwork.value, () => {
 
 .control-buttons {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 0.5rem;
 }
 
@@ -998,7 +1178,6 @@ watch(() => globalNetwork.value, () => {
 .btn-secondary {
   background: #718096;
   color: white;
-  grid-column: 1 / -1;
 }
 
 .flow-rate-info {
@@ -1084,11 +1263,17 @@ watch(() => globalNetwork.value, () => {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   position: relative;
   overflow: hidden;
+  cursor: grab;
+}
+
+.network-canvas-container:active {
+  cursor: grabbing;
 }
 
 .network-canvas {
   width: 100%;
   height: 100%;
+  display: block;
 }
 
 .network-edge {

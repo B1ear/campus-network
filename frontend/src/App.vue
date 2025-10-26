@@ -73,24 +73,62 @@ const tabs = [
 
 .header {
   text-align: center;
-  padding: 1.2rem 1rem;
+  padding: 1.5rem 1rem 1.2rem;
   color: white;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(25px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+  position: relative;
+  overflow: hidden;
+}
+
+.header::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+  animation: pulse 8s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.5; }
+  50% { transform: translate(10%, 10%) scale(1.1); opacity: 0.8; }
 }
 
 .header h1 {
   margin: 0;
-  font-size: 1.8rem;
-  font-weight: 700;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+  font-size: 2.2rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #ffffff 0%, #e0e7ff 50%, #ffffff 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-shadow: none;
+  letter-spacing: 0.5px;
+  animation: shimmer 3s linear infinite;
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.3));
+  line-height: 1.2;
+}
+
+@keyframes shimmer {
+  to { background-position: 200% center; }
 }
 
 .subtitle {
-  margin: 0.3rem 0 0;
+  margin: 0.5rem 0 0;
   font-size: 0.95rem;
-  opacity: 0.9;
+  opacity: 0.95;
+  font-weight: 500;
+  letter-spacing: 2px;
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .container {
