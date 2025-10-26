@@ -7,7 +7,58 @@ from matplotlib import font_manager
 import io
 import base64
 
-def generate_random_planar_network(n=25, cost_range=(10, 100), cap_range=(100, 1000), seed=None):
+def generate_random_positions(n, seed=None, min_distance=0.3, scale=2.0):
+    """
+    生成随机位置,确保节点之间有最小距离
+    
+    Args:
+        n: 节点数量
+        seed: 随机种子
+        min_distance: 节点之间的最小距离
+        scale: 布局缩放系数
+    
+    Returns:
+        pos: 节点位置字典 {node_id: (x, y)}
+    """
+    if seed is not None:
+        random.seed(seed)
+    
+    pos = {}
+    max_attempts = 1000  # 每个节点的最大尝试次数
+    
+    for i in range(n):
+        attempts = 0
+        while attempts < max_attempts:
+            # 在圆形区域内随机生成位置
+            angle = random.uniform(0, 2 * math.pi)
+            radius = random.uniform(0, 1) ** 0.5  # 平方根使分布更均匀
+            x = radius * math.cos(angle) * scale
+            y = radius * math.sin(angle) * scale
+            
+            # 检查与已有节点的距离
+            valid = True
+            for existing_pos in pos.values():
+                dist = math.sqrt((x - existing_pos[0])**2 + (y - existing_pos[1])**2)
+                if dist < min_distance:
+                    valid = False
+                    break
+            
+            if valid:
+                pos[i] = (x, y)
+                break
+            
+            attempts += 1
+        
+        # 如果多次尝试后仍无法找到位置,降低最小距离要求
+        if i not in pos:
+            angle = random.uniform(0, 2 * math.pi)
+            radius = random.uniform(0, 1) ** 0.5
+            pos[i] = (radius * math.cos(angle) * scale, 
+                     radius * math.sin(angle) * scale)
+    
+    return pos
+
+def generate_random_planar_network(n=20, cost_range=(10, 100), cap_range=(100, 1000), seed=None):
     """
     生成随机连通平面图网络
     
@@ -73,13 +124,8 @@ def generate_random_planar_network(n=25, cost_range=(10, 100), cap_range=(100, 1
     # 验证图是连通的
     assert nx.is_connected(G), "生成的图不连通"
     
-    # 生成节点位置（使用平面图布局）
-    try:
-        # 使用 planar_layout 获得平面布局
-        pos = nx.planar_layout(G)
-    except:
-        # 如果失败，使用 spring_layout
-        pos = nx.spring_layout(G, seed=seed, k=2, iterations=50)
+    # 生成节点位置(使用随机散点布局,避免重合)
+    pos = generate_random_positions(n, seed=seed, min_distance=0.3)
     
     # 分配 cost / capacity
     for u, v in G.edges():
@@ -168,8 +214,8 @@ def draw_campus_network(G, pos, save_path=None, return_base64=False):
 
 # 主程序部分
 if __name__ == "__main__":
-    n = 25  # 路由器数量（>=20）
-    G, pos, adjacency = generate_planar_campus_network(n=n, seed=42)
+    n = 20  # 路由器数量（>=20）
+    G, pos, adjacency = generate_random_planar_network(n=n, seed=42)
 
     print("=== 校园网路由邻接表 ===")
     for i in range(0, n):  # 打印前10个节点的连接信息

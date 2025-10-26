@@ -22,7 +22,6 @@
         <div class="content">
           <NetworkConfigPanel v-if="activeTab === 'network'" />
           <InteractiveTrafficPanel v-if="activeTab === 'interactive'" />
-          <NetworkSimulationPanel v-if="activeTab === 'simulation'" />
           <MSTPanel v-if="activeTab === 'mst'" />
           <MaxFlowPanel v-if="activeTab === 'maxflow'" />
           <AESPanel v-if="activeTab === 'aes'" />
@@ -42,7 +41,6 @@ import MSTPanel from './components/MSTPanel.vue'
 import MaxFlowPanel from './components/MaxFlowPanel.vue'
 import AESPanel from './components/AESPanel.vue'
 import NetworkConfigPanel from './components/NetworkConfigPanel.vue'
-import NetworkSimulationPanel from './components/NetworkSimulationPanel.vue'
 import InteractiveTrafficPanel from './components/InteractiveTrafficPanel.vue'
 
 const activeTab = ref('network')
@@ -59,7 +57,6 @@ provide('setGlobalNetwork', setGlobalNetwork)
 const tabs = [
   { id: 'network', name: '网络配置', icon: '🌐' },
   { id: 'interactive', name: '交互式仿真', icon: '🎮' },
-  { id: 'simulation', name: '网络分析', icon: '🔬' },
   { id: 'mst', name: '最小生成树', icon: '🌲' },
   { id: 'maxflow', name: '最大流', icon: '💧' },
   { id: 'aes', name: 'AES加密', icon: '🔐' },

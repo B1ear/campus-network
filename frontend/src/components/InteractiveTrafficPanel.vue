@@ -284,10 +284,19 @@
       </div>
     </div>
   </div>
+  
+  <!-- Toast通知 -->
+  <Toast 
+    :message="toast.message" 
+    :type="toast.type" 
+    :show="toast.show" 
+    @close="toast.show = false" 
+  />
 </template>
 
 <script setup>
-import { ref, computed, inject, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, inject, onMounted, onUnmounted, watch, reactive } from 'vue'
+import Toast from './Toast.vue'
 
 const globalNetwork = inject('globalNetwork')
 const hasNetwork = computed(() => globalNetwork.value !== null)
@@ -338,6 +347,19 @@ const availableNodes = computed(() => {
 // 路径颜色
 const pathColors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8']
 
+// Toast通知状态
+const toast = reactive({
+  show: false,
+  message: '',
+  type: 'error'
+})
+
+function showToast(message, type = 'info') {
+  toast.message = message
+  toast.type = type
+  toast.show = true
+}
+
 // 动画循环
 let animationId = null
 let lastTime = 0
@@ -365,24 +387,109 @@ const initVisualization = () => {
     isActive: false
   }))
 
-  // 计算节点位置（圆形布局）
+  // 计算节点位置（力导向布局）
   calculateNodePositions()
 }
 
-// 计算节点位置
+// 计算节点位置（使用力导向布局算法）
 const calculateNodePositions = () => {
   const nodes = visualNodes.value
-  const centerX = canvasSize.value.width / 2
-  const centerY = canvasSize.value.height / 2
-  const radius = Math.min(centerX, centerY) - 80
-
-  nodes.forEach((node, index) => {
-    const angle = (2 * Math.PI * index) / nodes.length - Math.PI / 2
-    nodePositions.value[node.id] = {
-      x: centerX + radius * Math.cos(angle),
-      y: centerY + radius * Math.sin(angle)
+  const edges = visualEdges.value
+  const width = canvasSize.value.width
+  const height = canvasSize.value.height
+  
+  if (nodes.length === 0) return
+  
+  // 初始化随机位置
+  const positions = {}
+  const velocities = {}
+  nodes.forEach(node => {
+    positions[node.id] = {
+      x: Math.random() * (width - 200) + 100,
+      y: Math.random() * (height - 200) + 100
     }
+    velocities[node.id] = { x: 0, y: 0 }
   })
+  
+  // 力导向布局参数
+  const iterations = 150
+  const repulsionStrength = 3000 // 节点间斥力
+  const attractionStrength = 0.02 // 边的引力
+  const dampening = 0.85 // 阻尼系数
+  const minDistance = 100 // 最小距离
+  
+  // 迭代计算
+  for (let iter = 0; iter < iterations; iter++) {
+    const forces = {}
+    nodes.forEach(node => {
+      forces[node.id] = { x: 0, y: 0 }
+    })
+    
+    // 1. 计算节点间的斥力（库仑力）
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const nodeA = nodes[i]
+        const nodeB = nodes[j]
+        const dx = positions[nodeB.id].x - positions[nodeA.id].x
+        const dy = positions[nodeB.id].y - positions[nodeA.id].y
+        const distance = Math.sqrt(dx * dx + dy * dy) || 1
+        
+        if (distance < minDistance * 3) {
+          const force = repulsionStrength / (distance * distance)
+          const fx = (dx / distance) * force
+          const fy = (dy / distance) * force
+          
+          forces[nodeA.id].x -= fx
+          forces[nodeA.id].y -= fy
+          forces[nodeB.id].x += fx
+          forces[nodeB.id].y += fy
+        }
+      }
+    }
+    
+    // 2. 计算边的引力（胡克定律）
+    edges.forEach(edge => {
+      const dx = positions[edge.to].x - positions[edge.from].x
+      const dy = positions[edge.to].y - positions[edge.from].y
+      const distance = Math.sqrt(dx * dx + dy * dy) || 1
+      
+      const force = distance * attractionStrength
+      const fx = (dx / distance) * force
+      const fy = (dy / distance) * force
+      
+      forces[edge.from].x += fx
+      forces[edge.from].y += fy
+      forces[edge.to].x -= fx
+      forces[edge.to].y -= fy
+    })
+    
+    // 3. 向中心的拉力（防止节点飞出边界）
+    const centerX = width / 2
+    const centerY = height / 2
+    nodes.forEach(node => {
+      const dx = centerX - positions[node.id].x
+      const dy = centerY - positions[node.id].y
+      forces[node.id].x += dx * 0.01
+      forces[node.id].y += dy * 0.01
+    })
+    
+    // 4. 更新速度和位置
+    nodes.forEach(node => {
+      velocities[node.id].x = (velocities[node.id].x + forces[node.id].x) * dampening
+      velocities[node.id].y = (velocities[node.id].y + forces[node.id].y) * dampening
+      
+      positions[node.id].x += velocities[node.id].x
+      positions[node.id].y += velocities[node.id].y
+      
+      // 边界约束
+      const margin = 60
+      positions[node.id].x = Math.max(margin, Math.min(width - margin, positions[node.id].x))
+      positions[node.id].y = Math.max(margin, Math.min(height - margin, positions[node.id].y))
+    })
+  }
+  
+  // 应用计算好的位置
+  nodePositions.value = positions
 }
 
 // 开始仿真
@@ -411,6 +518,8 @@ const startSimulation = async () => {
   // 开始动画循环
   lastTime = performance.now()
   animationLoop()
+  
+  showToast('仿真已开始', 'success')
 }
 
 // 计算路径（简化版本，实际应调用后端）
@@ -422,7 +531,7 @@ const calculatePaths = async () => {
   const paths = findKPaths(source, target, strategy === 'single' ? 1 : 3)
   
   if (paths.length === 0) {
-    alert(`无法找到从节点 ${source} 到节点 ${target} 的路径！`)
+    showToast(`无法找到从节点 ${source} 到节点 ${target} 的路径！`, 'error')
     stopSimulation()
     return
   }
@@ -455,11 +564,9 @@ const calculatePaths = async () => {
     
     // 显示警告
     const pathsInfo = strategy === 'single' ? '1条路径' : `${paths.length}条路径`
-    alert(
-      `⚠️ 流量速率超出网络容量！\n\n` +
-      `请求速率: ${requestedFlow} 单位/秒\n` +
-      `最大容量: ${totalCapacity.toFixed(0)} 单位/秒 (${pathsInfo})\n\n` +
-      `将使用最大容量进行仿真。`
+    showToast(
+      `流量速率超出网络容量！请求: ${requestedFlow} 单位/秒，最大: ${totalCapacity.toFixed(0)} 单位/秒 (${pathsInfo})，将使用最大容量进行仿真。`,
+      'warning'
     )
   }
 
@@ -616,6 +723,7 @@ const updateStats = () => {
 // 暂停仿真
 const pauseSimulation = () => {
   isPaused.value = true
+  showToast('仿真已暂停', 'info')
 }
 
 // 继续仿真
@@ -623,6 +731,7 @@ const resumeSimulation = () => {
   isPaused.value = false
   lastTime = performance.now()
   animationLoop()
+  showToast('仿真已继续', 'success')
 }
 
 // 停止仿真
@@ -633,12 +742,14 @@ const stopSimulation = () => {
     cancelAnimationFrame(animationId)
     animationId = null
   }
+  showToast('仿真已停止', 'info')
 }
 
 // 重置仿真
 const resetSimulation = () => {
   stopSimulation()
   initVisualization()
+  showToast('仿真已重置', 'info')
 }
 
 // 节点选择

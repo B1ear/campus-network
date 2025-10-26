@@ -4,7 +4,7 @@
 """
 
 DEFAULT_CONFIG = {
-    "num_nodes": 25,           # 路由器数量
+    "num_nodes": 20,           # 路由器数量
     "cost_range": [10, 100],   # 造价范围
     "capacity_range": [100, 1000],  # 吞吐量/容量范围
     "seed": 42                 # 随机种子

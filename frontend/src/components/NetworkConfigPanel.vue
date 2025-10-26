@@ -203,6 +203,14 @@
       :show="showImageViewer" 
       @close="closeImageViewer" 
     />
+    
+    <!-- Toast通知 -->
+    <Toast 
+      :message="toast.message" 
+      :type="toast.type" 
+      :show="toast.show" 
+      @close="toast.show = false" 
+    />
   </div>
 </template>
 
@@ -210,6 +218,7 @@
 import { ref, reactive, onMounted, inject } from 'vue'
 import { api } from '../api/backend.js'
 import ImageViewer from './ImageViewer.vue'
+import Toast from './Toast.vue'
 
 const config = reactive({
   num_nodes: 25,
@@ -228,6 +237,19 @@ const mode = ref('auto') // 'auto' or 'manual'
 const showImageViewer = ref(false)
 const viewerImageSrc = ref('')
 const viewerImageAlt = ref('')
+
+// Toast通知状态
+const toast = reactive({
+  show: false,
+  message: '',
+  type: 'success'
+})
+
+function showToast(message, type = 'success') {
+  toast.message = message
+  toast.type = type
+  toast.show = true
+}
 
 // 手动编辑模式的数据
 const manualNodes = ref(5)
@@ -295,6 +317,9 @@ function useGeneratedNetwork() {
   }
   
   isApplied.value = true
+  
+  // 显示成功通知
+  showToast('网络配置已成功应用！可以在算法页面使用了', 'success')
 }
 
 function initManualEdges() {

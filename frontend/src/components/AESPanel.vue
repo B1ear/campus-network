@@ -42,14 +42,36 @@
       </ul>
       <button @click="loadExample" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); margin-top: 1rem;">💡 加载示例</button>
     </div>
+    
+    <!-- Toast通知 -->
+    <Toast 
+      :message="toast.message" 
+      :type="toast.type" 
+      :show="toast.show" 
+      @close="toast.show = false" 
+    />
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, reactive } from 'vue'
 import { api } from '../api/backend.js'
+import Toast from './Toast.vue'
 const plaintext = ref(''); const encKey = ref(''); const encLoading = ref(false); const encResult = ref(null); const encError = ref(null)
 const ciphertext = ref(''); const decKey = ref(''); const decLoading = ref(false); const decResult = ref(null); const decError = ref(null)
+
+// Toast通知状态
+const toast = reactive({
+  show: false,
+  message: '',
+  type: 'success'
+})
+
+function showToast(message, type = 'success') {
+  toast.message = message
+  toast.type = type
+  toast.show = true
+}
 async function encrypt() {
   encError.value = null; encResult.value = null; encLoading.value = true
   try {
@@ -65,7 +87,7 @@ async function decrypt() {
   } catch (err) { decError.value = err.message } finally { decLoading.value = false }
 }
 function useEnc() { if (encResult.value) { ciphertext.value = encResult.value.encrypted; decKey.value = encKey.value } }
-function copy(text) { navigator.clipboard.writeText(text).then(() => alert('已复制到剪贴板！')) }
+function copy(text) { navigator.clipboard.writeText(text).then(() => showToast('已复制到剪贴板！', 'success')) }
 function loadExample() { plaintext.value = 'Hello, Campus Network! 这是一个测试消息。'; encKey.value = 'my_secret_key123' }
 </script>
 

@@ -213,12 +213,21 @@
       <h3>尚未配置网络</h3>
       <p>请先在"网络配置"页面生成并应用网络拓扑</p>
     </div>
+    
+    <!-- Toast通知 -->
+    <Toast 
+      :message="toast.message" 
+      :type="toast.type" 
+      :show="toast.show" 
+      @close="toast.show = false" 
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, inject, computed } from 'vue'
+import { ref, inject, computed, reactive } from 'vue'
 import { analyzeRobustness as apiAnalyzeRobustness, simulateTrafficLoadBalancing, calculateMaxFlowAPI } from '../api/backend'
+import Toast from './Toast.vue'
 
 const globalNetwork = inject('globalNetwork')
 const hasNetwork = computed(() => globalNetwork.value !== null)
@@ -253,6 +262,19 @@ const maxflowParams = ref({
 })
 const maxflowResult = ref(null)
 
+// Toast通知状态
+const toast = reactive({
+  show: false,
+  message: '',
+  type: 'error'
+})
+
+function showToast(message, type = 'error') {
+  toast.message = message
+  toast.type = type
+  toast.show = true
+}
+
 // 鲁棒性分析
 const analyzeRobustness = async () => {
   if (!globalNetwork.value) return
@@ -267,7 +289,7 @@ const analyzeRobustness = async () => {
     )
     robustnessResult.value = result
   } catch (error) {
-    alert('分析失败: ' + error.message)
+    showToast('分析失败: ' + error.message, 'error')
   } finally {
     loading.value = false
   }
@@ -293,7 +315,7 @@ const simulateLoadBalancing = async () => {
     )
     trafficResult.value = result
   } catch (error) {
-    alert('仿真失败: ' + error.message)
+    showToast('仿真失败: ' + error.message, 'error')
   } finally {
     loading.value = false
   }
@@ -315,7 +337,7 @@ const calculateMaxFlow = async () => {
     )
     maxflowResult.value = result
   } catch (error) {
-    alert('计算失败: ' + error.message)
+    showToast('计算失败: ' + error.message, 'error')
   } finally {
     loading.value = false
   }
