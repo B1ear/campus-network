@@ -81,19 +81,47 @@
           </div>
 
           <div v-if="manualNodes >= 2" class="edges-editor">
-            <h4>边配置 <button @click="addManualEdge" class="add-edge-btn">➕ 添加边</button></h4>
+            <div class="edges-header">
+              <h4>边配置</h4>
+              <button @click="addManualEdge" class="add-edge-btn">➕ 添加边</button>
+            </div>
+            
+            <!-- 列标题 -->
+            <div class="edges-header-labels">
+              <span class="label-from">起点</span>
+              <span class="label-arrow"></span>
+              <span class="label-to">终点</span>
+              <span class="label-cost">造价</span>
+              <span class="label-capacity">容量</span>
+              <span class="label-action">操作</span>
+            </div>
+            
             <div class="edges-list">
               <div v-for="(edge, idx) in manualEdges" :key="idx" class="edge-item">
-                <select v-model.number="edge.from">
+                <select v-model.number="edge.from" class="select-from" title="起点节点">
                   <option v-for="n in manualNodes" :key="n" :value="n-1">{{ n-1 }}</option>
                 </select>
-                <span>→</span>
-                <select v-model.number="edge.to">
+                <span class="arrow">→</span>
+                <select v-model.number="edge.to" class="select-to" title="终点节点">
                   <option v-for="n in manualNodes" :key="n" :value="n-1">{{ n-1 }}</option>
                 </select>
-                <input type="number" v-model.number="edge.cost" placeholder="造价" min="1" />
-                <input type="number" v-model.number="edge.capacity" placeholder="容量" min="1" />
-                <button @click="removeManualEdge(idx)" class="remove-btn">❌</button>
+                <input 
+                  type="number" 
+                  v-model.number="edge.cost" 
+                  placeholder="造价" 
+                  min="1" 
+                  class="input-cost"
+                  title="边的造价（用于MST算法）"
+                />
+                <input 
+                  type="number" 
+                  v-model.number="edge.capacity" 
+                  placeholder="容量" 
+                  min="1" 
+                  class="input-capacity"
+                  title="边的容量（用于最大流算法）"
+                />
+                <button @click="removeManualEdge(idx)" class="remove-btn" title="删除此边">❌</button>
               </div>
             </div>
           </div>
@@ -147,6 +175,9 @@
               v-if="networkData.topology_image" 
               :src="'data:image/png;base64,' + networkData.topology_image" 
               alt="网络拓扑图"
+              class="topology-img clickable"
+              @click="openImageViewer('data:image/png;base64,' + networkData.topology_image, '网络拓扑图可视化')"
+              title="点击放大"
             />
           </div>
 
@@ -164,12 +195,21 @@
         </div>
       </div>
     </div>
+    
+    <!-- 图片查看器 -->
+    <ImageViewer 
+      :src="viewerImageSrc" 
+      :alt="viewerImageAlt" 
+      :show="showImageViewer" 
+      @close="closeImageViewer" 
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted, inject } from 'vue'
 import { api } from '../api/backend.js'
+import ImageViewer from './ImageViewer.vue'
 
 const config = reactive({
   num_nodes: 25,
@@ -183,6 +223,11 @@ const error = ref(null)
 const networkData = ref(null)
 const isApplied = ref(false)
 const mode = ref('auto') // 'auto' or 'manual'
+
+// 图片查看器状态
+const showImageViewer = ref(false)
+const viewerImageSrc = ref('')
+const viewerImageAlt = ref('')
 
 // 手动编辑模式的数据
 const manualNodes = ref(5)
@@ -328,14 +373,13 @@ async function applyManualNetwork() {
     }
     
     // 生成拓扑图（使用API）
-    // 注：这里我们复用生成接口，但使用手动数据
-    // 实际上我们应该创建一个新的API端点，但为了简单起见，我们直接构造结果
+    const previewResult = await api.previewGraph(nodes, edges)
     
     networkData.value = {
       nodes,
       edges,
       stats,
-      topology_image: null, // 手动模式暂不生成拓扑图
+      topology_image: previewResult.visualization,
       config: { mode: 'manual' }
     }
   } catch (err) {
@@ -344,23 +388,38 @@ async function applyManualNetwork() {
     loading.value = false
   }
 }
+
+function openImageViewer(imageSrc, imageAlt) {
+  viewerImageSrc.value = imageSrc
+  viewerImageAlt.value = imageAlt
+  showImageViewer.value = true
+}
+
+function closeImageViewer() {
+  showImageViewer.value = false
+}
 </script>
 
 <style scoped>
 .panel {
-  padding: 1rem;
+  padding: 0;
+  background: transparent;
 }
 
 .layout {
   display: grid;
-  grid-template-columns: 400px 1fr;
-  gap: 2rem;
+  grid-template-columns: minmax(450px, 550px) 1fr;
+  gap: 1.5rem;
 }
 
 .section {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 h2 {
@@ -370,11 +429,12 @@ h2 {
 }
 
 h3 {
-  color: #333;
+  color: #1f2937;
   border-bottom: 2px solid #667eea;
-  padding-bottom: 0.5rem;
-  margin: 0;
-  font-size: 1.2rem;
+  padding-bottom: 0.75rem;
+  margin: 0 0 1rem;
+  font-size: 1.15rem;
+  font-weight: 600;
 }
 
 .form-group {
@@ -391,15 +451,18 @@ label {
 
 input[type="number"] {
   padding: 0.6rem;
-  border: 2px solid #ddd;
-  border-radius: 6px;
-  font-size: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 0.95rem;
   font-family: inherit;
+  transition: all 0.2s;
+  box-sizing: border-box;
 }
 
 input:focus {
   outline: none;
   border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
 .range-input {
@@ -410,11 +473,14 @@ input:focus {
 
 .range-input input {
   flex: 1;
+  min-width: 0;
+  width: 0;
 }
 
 .range-input span {
   color: #666;
   font-weight: bold;
+  flex-shrink: 0;
 }
 
 .hint {
@@ -476,19 +542,19 @@ button:disabled {
 
 .error-box {
   padding: 1rem;
-  background: #fee;
-  border: 2px solid #fcc;
-  border-radius: 8px;
-  color: #c33;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  color: #dc2626;
   font-weight: 500;
 }
 
 .success-box {
   padding: 1rem;
-  background: #d1fae5;
-  border: 2px solid #6ee7b7;
-  border-radius: 8px;
-  color: #065f46;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  color: #16a34a;
   font-weight: 500;
 }
 
@@ -524,17 +590,28 @@ button:disabled {
 }
 
 .topology-image {
-  background: #f9f9f9;
-  border: 2px solid #e0e0e0;
-  border-radius: 8px;
-  padding: 1rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 1.5rem;
   text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 .topology-image img {
   max-width: 100%;
   height: auto;
   border-radius: 4px;
+  transition: all 0.3s ease;
+}
+
+.topology-image img.clickable {
+  cursor: zoom-in;
+}
+
+.topology-image img.clickable:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
 }
 
 .placeholder {
@@ -542,10 +619,10 @@ button:disabled {
   align-items: center;
   justify-content: center;
   height: 400px;
-  background: #f9f9f9;
-  border: 2px dashed #ddd;
-  border-radius: 8px;
-  color: #999;
+  background: white;
+  border: 2px dashed #e5e7eb;
+  border-radius: 12px;
+  color: #9ca3af;
   font-size: 1.1rem;
 }
 
@@ -569,75 +646,169 @@ button:disabled {
 .mode-selector {
   display: flex;
   gap: 1rem;
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
   justify-content: center;
+  background: white;
+  padding: 1rem;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 .mode-btn {
   flex: 1;
   max-width: 200px;
   padding: 1rem 1.5rem;
-  border: 2px solid #ddd;
-  border-radius: 12px;
-  background: white;
-  color: #666;
-  font-size: 1.1rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  background: transparent;
+  color: #6b7280;
+  font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .mode-btn:hover {
   border-color: #667eea;
   color: #667eea;
-  transform: translateY(-2px);
+  background: rgba(102, 126, 234, 0.05);
 }
 
 .mode-btn.active {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  border-color: #667eea;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  border-color: transparent;
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
 }
 
 /* 手动编辑区域 */
 .edges-editor {
   margin-top: 1.5rem;
   padding: 1rem;
-  background: #f9f9f9;
-  border-radius: 8px;
-  border: 2px solid #e0e0e0;
+  background: white;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
-.edges-editor h4 {
-  margin: 0 0 1rem;
+.edges-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.edges-header h4 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.edges-header-labels {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: #f9fafb;
+  border-radius: 6px;
+  margin-bottom: 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #6b7280;
+  overflow-x: auto;
+}
+
+.label-from {
+  width: 60px;
+  flex-shrink: 0;
+}
+
+.select-from {
+  width: 60px;
+  min-width: 60px;
+  flex-shrink: 0;
+}
+
+.label-to {
+  width: 60px;
+  flex-shrink: 0;
+}
+
+.select-to {
+  width: 60px;
+  min-width: 60px;
+  flex-shrink: 0;
+}
+
+.label-arrow {
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.arrow {
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.label-cost {
+  width: 70px;
+  flex-shrink: 0;
+}
+
+.input-cost {
+  width: 70px;
+  min-width: 70px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.label-capacity {
+  width: 70px;
+  flex-shrink: 0;
+}
+
+.input-capacity {
+  width: 70px;
+  min-width: 70px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.label-action {
+  width: 40px;
+  text-align: center;
+  flex-shrink: 0;
 }
 
 .add-edge-btn {
-  padding: 0.4rem 0.8rem;
+  padding: 0.5rem 1rem;
   border: none;
   border-radius: 6px;
-  background: #10b981;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s;
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
 }
 
 .add-edge-btn:hover {
-  background: #059669;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
 }
 
 .edges-list {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  max-height: 400px;
+  max-height: 350px;
   overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 0.5rem;
 }
 
 .edge-item {
@@ -645,51 +816,70 @@ button:disabled {
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem;
+  background: #fafbfc;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s;
+  overflow-x: auto;
+  min-height: 60px;
+}
+
+.edge-item:hover {
   background: white;
-  border-radius: 6px;
-  border: 1px solid #ddd;
+  border-color: #667eea;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
 }
 
 .edge-item select {
-  padding: 0.5rem;
-  border: 2px solid #ddd;
-  border-radius: 4px;
-  font-size: 0.95rem;
-  min-width: 60px;
+  padding: 0.4rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  background: white;
+  transition: all 0.2s;
+  box-sizing: border-box;
 }
 
 .edge-item input[type="number"] {
-  padding: 0.5rem;
-  border: 2px solid #ddd;
-  border-radius: 4px;
-  font-size: 0.95rem;
-  width: 80px;
+  padding: 0.4rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  background: white;
+  transition: all 0.2s;
+  box-sizing: border-box;
 }
 
 .edge-item select:focus,
 .edge-item input:focus {
   outline: none;
   border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
-.edge-item span {
+.edge-item .arrow {
   font-weight: bold;
-  color: #666;
+  color: #667eea;
+  font-size: 1.2rem;
 }
 
 .remove-btn {
-  padding: 0.4rem 0.6rem;
+  padding: 0.3rem 0.5rem;
   border: none;
-  border-radius: 4px;
-  background: #ef4444;
-  color: white;
-  font-size: 0.9rem;
+  border-radius: 6px;
+  background: transparent;
+  color: #ef4444;
+  font-size: 0.95rem;
   cursor: pointer;
   transition: all 0.2s;
+  width: 40px;
+  min-width: 40px;
+  flex-shrink: 0;
 }
 
 .remove-btn:hover {
-  background: #dc2626;
+  background: #fef2f2;
+  transform: scale(1.1);
 }
 
 @media (max-width: 768px) {

@@ -32,15 +32,15 @@
         </div>
       </div>
     </div>
-    <div style="margin-top: 2rem; padding: 1rem; background: #f0f4ff; border-radius: 8px; border: 2px dashed #667eea;">
-      <h3 style="color: #667eea; margin-top: 0;">ℹ️ 说明</h3>
-      <ul style="margin: 0; padding-left: 1.5rem; color: #555;">
+    <div style="padding: 1.5rem; background: white; border-radius: 12px; border: 2px solid #e0e7ff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);">
+      <h3 style="color: #667eea; margin-top: 0; font-size: 1.1rem; font-weight: 600;">ℹ️ 说明</h3>
+      <ul style="margin: 0.5rem 0 0; padding-left: 1.5rem; color: #6b7280; line-height: 1.8;">
         <li>使用自实现的 AES-128 加密算法</li>
         <li>密钥会自动调整为16字节</li>
         <li>解密时必须使用相同的密钥</li>
         <li>密文以十六进制字符串格式输出</li>
       </ul>
-      <button @click="loadExample" style="background: #ff9800; margin-top: 1rem;">💡 加载示例</button>
+      <button @click="loadExample" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); margin-top: 1rem;">💡 加载示例</button>
     </div>
   </div>
 </template>
@@ -70,13 +70,41 @@ function loadExample() { plaintext.value = 'Hello, Campus Network! 这是一个�
 </script>
 
 <style scoped>
-.panel { padding: 1rem; } .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem; }
-.section { display: flex; flex-direction: column; gap: 0.75rem; padding: 1rem; background: #f9f9f9; border-radius: 8px; }
-h2 { color: #667eea; margin: 0 0 1rem; } h3 { color: #333; border-bottom: 2px solid #667eea; padding-bottom: 0.5rem; margin: 0; }
-label { font-weight: 600; color: #555; font-size: 0.9rem; }
-input, textarea { padding: 0.6rem; border: 2px solid #ddd; border-radius: 6px; font-size: 1rem; font-family: inherit; }
-input:focus, textarea:focus { outline: none; border-color: #667eea; }
-button { padding: 0.75rem; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; background: #667eea; color: white; font-size: 1rem; }
-button:hover:not(:disabled) { opacity: 0.9; } button:disabled { opacity: 0.6; cursor: not-allowed; }
+.panel { padding: 0; background: transparent; }
+.layout { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+.section { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 0.75rem; 
+  padding: 1.5rem; 
+  background: white; 
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+h2 { color: #1f2937; margin: 0 0 1.5rem; font-size: 1.5rem; font-weight: 600; }
+h3 { color: #1f2937; border-bottom: 2px solid #667eea; padding-bottom: 0.75rem; margin: 0 0 1rem; font-size: 1.15rem; font-weight: 600; }
+label { font-weight: 600; color: #4b5563; font-size: 0.9rem; }
+input, textarea { 
+  padding: 0.75rem; 
+  border: 1px solid #e5e7eb; 
+  border-radius: 8px; 
+  font-size: 0.95rem; 
+  font-family: inherit;
+  transition: all 0.2s;
+}
+input:focus, textarea:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1); }
+button { 
+  padding: 0.75rem 1rem; 
+  border: none; 
+  border-radius: 8px; 
+  font-weight: 600; 
+  cursor: pointer; 
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+  color: white; 
+  font-size: 0.95rem;
+  transition: all 0.3s;
+}
+button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3); } 
+button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
 </style>
