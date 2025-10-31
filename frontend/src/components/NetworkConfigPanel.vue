@@ -275,6 +275,11 @@ async function generateNetwork() {
   
   try {
     const result = await api.generateNetwork(config)
+    
+    // 使用previewGraph API重新生成路由图（与MST/最大流界面相同）
+    const previewResult = await api.previewGraph(result.nodes, result.edges)
+    result.topology_image = previewResult.visualization
+    
     networkData.value = result
   } catch (err) {
     error.value = err.message
