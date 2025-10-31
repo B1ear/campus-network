@@ -231,9 +231,13 @@ function generateConnectedGraph() {
   }
 }
 
-const defaultGraph = generateConnectedGraph()
-const nodes = ref(defaultGraph.nodes)
-const edges = ref(defaultGraph.edges)
+// 使用指定的默认图数据
+const defaultExampleData = {
+  nodes: '1,2,3,4,5,6,7,8',
+  edges: '1-2-6\n1-4-12\n1-3-8\n2-4-7\n2-5-8\n2-6-13\n3-6-12\n3-7-11\n4-5-5\n4-7-6\n5-6-12\n5-8-15\n6-7-4\n6-8-7\n7-8-5'
+}
+const nodes = ref(defaultExampleData.nodes)
+const edges = ref(defaultExampleData.edges)
 const algo = ref('kruskal')
 const loading = ref(false)
 const result = ref(null)
@@ -254,7 +258,7 @@ const globalNetwork = inject('globalNetwork', null)
 
 onMounted(async () => {
   // 初始化可视化边数据
-  const parsed = edges.value.split('\\n').map(line => {
+  const parsed = edges.value.split('\n').map(line => {
     const p = line.trim().split('-')
     if (p.length === 3) {
       return { 
@@ -275,7 +279,7 @@ const parseEdges = computed(() => {
   if (inputMode.value === 'visual') {
     return visualEdges.value.map(e => ({ from: e.from, to: e.to, weight: e.cost }))
   }
-  return edges.value.split('\\n').map(line => {
+  return edges.value.split('\n').map(line => {
     const p = line.trim().split('-')
     if (p.length === 3) return { from: parseInt(p[0]), to: parseInt(p[1]), weight: parseInt(p[2]) }
     return null
@@ -304,23 +308,27 @@ async function calc() {
   }
 }
 function example() { 
-  const graph = generateConnectedGraph()
-  nodes.value = graph.nodes
-  edges.value = graph.edges
-  // 如果在可视化模式，同步更新
-  if (inputMode.value === 'visual') {
-    const parsed = edges.value.split('\\n').map(line => {
-      const p = line.trim().split('-')
-      if (p.length === 3) {
-        return { 
-          from: parseInt(p[0]), 
-          to: parseInt(p[1]), 
-          cost: parseInt(p[2]) 
-        }
+  // 使用指定的示例数据
+  nodes.value = defaultExampleData.nodes
+  edges.value = defaultExampleData.edges
+  
+  // 无论在什么模式下都同步更新visualEdges
+  const parsed = edges.value.split('\n').map(line => {
+    const p = line.trim().split('-')
+    if (p.length === 3) {
+      return { 
+        from: parseInt(p[0]), 
+        to: parseInt(p[1]), 
+        cost: parseInt(p[2]) 
       }
-      return null
-    }).filter(e => e)
-    visualEdges.value = parsed
+    }
+    return null
+  }).filter(e => e)
+  visualEdges.value = parsed
+  
+  // 如果在可视化模式,刷新预览
+  if (inputMode.value === 'visual') {
+    setTimeout(() => refreshPreview(), 100)
   }
 }
 
@@ -330,14 +338,34 @@ function loadNetworkFromStorage() {
     if (data) {
       const network = JSON.parse(data)
       console.log('加载的网络数据:', network)
-      // 转换为面板格式
+      console.log('边数据:', network.edges)
+      
+      // 转换为面板格式，最小生成树使用cost（造价）
       nodes.value = network.nodes.map(n => n.id).join(',')
-      edges.value = network.edges.map(e => `${e.from}-${e.to}-${e.weight || e.cost}`).join('\n')
+      edges.value = network.edges.map(e => `${e.from}-${e.to}-${e.cost}`).join('\n')
+      
+      console.log('转换后的edges:', edges.value)
+      
+      // 直接从网络数据构建 visualEdges
+      visualEdges.value = network.edges.map(e => ({
+        from: e.from,
+        to: e.to,
+        cost: e.cost
+      }))
+      
+      console.log('更新后的visualEdges:', visualEdges.value)
+      
+      // 如枟在可视化模式，刷新预览
+      if (inputMode.value === 'visual') {
+        setTimeout(() => refreshPreview(), 200)
+      }
+      
       return true
     }
     return false
   } catch (err) {
     console.error('加载网络数据失败:', err)
+    console.error(err)
     return false
   }
 }
@@ -413,9 +441,9 @@ async function refreshPreview() {
 
 // 监听输入模式切换
 watch(inputMode, async (newMode) => {
-  if (newMode === 'visual' && visualEdges.value.length === 0) {
-    // 从文本模式切换到可视化模式时，尝试解析现有边
-    const parsed = edges.value.split('\\n').map(line => {
+  if (newMode === 'visual') {
+    // 从文本模式切换到可视化模式时，总是解析现有边数据
+    const parsed = edges.value.split('\n').map(line => {
       const p = line.trim().split('-')
       if (p.length === 3) {
         return { 
@@ -427,11 +455,13 @@ watch(inputMode, async (newMode) => {
       return null
     }).filter(e => e)
     visualEdges.value = parsed
-    // 切换到可视化模式时刷新预览
-    await refreshPreview()
+    // 刷新预览
+    if (parsed.length > 0) {
+      await refreshPreview()
+    }
   } else if (newMode === 'text') {
     // 从可视化模式切换回文本模式时，同步数据
-    edges.value = visualEdges.value.map(e => `${e.from}-${e.to}-${e.cost}`).join('\\n')
+    edges.value = visualEdges.value.map(e => `${e.from}-${e.to}-${e.cost}`).join('\n')
   }
 })
 

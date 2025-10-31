@@ -56,10 +56,10 @@ provide('setGlobalNetwork', setGlobalNetwork)
 
 const tabs = [
   { id: 'network', name: '网络配置', icon: '🌐' },
-  { id: 'interactive', name: '交互式仿真', icon: '🎮' },
   { id: 'mst', name: '最小生成树', icon: '🌲' },
   { id: 'maxflow', name: '最大流', icon: '💧' },
   { id: 'aes', name: 'AES加密', icon: '🔐' },
+  { id: 'interactive', name: '交互式仿真', icon: '🎮' },
 ]
 </script>
 

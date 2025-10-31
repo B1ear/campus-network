@@ -165,7 +165,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, inject, watch } from 'vue'
+import { ref, computed, onMounted, inject, watch, nextTick } from 'vue'
 import { api } from '../api/backend.js'
 import ImageViewer from './ImageViewer.vue'
 import EdgeEditor from './EdgeEditor.vue'
@@ -206,11 +206,17 @@ function generateConnectedGraph() {
   }
 }
 
-const defaultGraph = generateConnectedGraph()
-const nodes = ref(defaultGraph.nodes)
-const edges = ref(defaultGraph.edges)
-const source = ref(1)
-const sink = ref(20)
+// 使用指定的默认最大流图数据
+const defaultExampleData = {
+  nodes: '1,2,3,4,5,6,7,8',
+  edges: '1-2-5\n1-3-7\n1-4-4\n2-5-8\n3-7-4\n4-3-2\n4-5-5\n4-7-6\n5-6-12\n5-8-6\n6-8-7\n7-6-4\n7-8-5',
+  source: 1,
+  sink: 8
+}
+const nodes = ref(defaultExampleData.nodes)
+const edges = ref(defaultExampleData.edges)
+const source = ref(defaultExampleData.source)
+const sink = ref(defaultExampleData.sink)
 const algo = ref('edmonds-karp')
 const loading = ref(false)
 const result = ref(null)
@@ -231,7 +237,7 @@ const globalNetwork = inject('globalNetwork', null)
 
 onMounted(async () => {
   // 初始化可视化边数据
-  const parsed = edges.value.split('\\n').map(line => {
+  const parsed = edges.value.split('\n').map(line => {
     const p = line.trim().split('-')
     if (p.length === 3) {
       return { 
@@ -253,7 +259,7 @@ const parseEdges = computed(() => {
   if (inputMode.value === 'visual') {
     return visualEdges.value.map(e => ({ from: e.from, to: e.to, capacity: e.capacity }))
   }
-  return edges.value.split('\\n').map(line => {
+  return edges.value.split('\n').map(line => {
     const p = line.trim().split('-')
     if (p.length === 3) return { from: parseInt(p[0]), to: parseInt(p[1]), capacity: parseInt(p[2]) }
     return null
@@ -269,52 +275,81 @@ async function calc() {
   } catch (err) { error.value = err.message } finally { loading.value = false }
 }
 function example() { 
-  const graph = generateConnectedGraph()
-  nodes.value = graph.nodes
-  edges.value = graph.edges
-  source.value = 1
-  sink.value = 20
-  if (inputMode.value === 'visual') {
-    const parsed = edges.value.split('\\n').map(line => {
-      const p = line.trim().split('-')
-      if (p.length === 3) {
-        return { 
-          from: parseInt(p[0]), 
-          to: parseInt(p[1]), 
-          capacity: parseInt(p[2]) 
-        }
+  // 使用指定的示例数据
+  nodes.value = defaultExampleData.nodes
+  edges.value = defaultExampleData.edges
+  source.value = defaultExampleData.source
+  sink.value = defaultExampleData.sink
+  
+  // 无论在什么模式下都同步更新visualEdges
+  const parsed = edges.value.split('\n').map(line => {
+    const p = line.trim().split('-')
+    if (p.length === 3) {
+      return { 
+        from: parseInt(p[0]), 
+        to: parseInt(p[1]), 
+        capacity: parseInt(p[2]) 
       }
-      return null
-    }).filter(e => e)
-    visualEdges.value = parsed
+    }
+    return null
+  }).filter(e => e)
+  visualEdges.value = parsed
+  
+  // 如果在可视化模式,刷新预览
+  if (inputMode.value === 'visual') {
+    setTimeout(() => refreshPreview(), 100)
   }
 }
 
-function loadNetworkFromStorage() {
+async function loadNetworkFromStorage() {
   try {
     const data = localStorage.getItem('campus-network-data')
     if (data) {
       const network = JSON.parse(data)
       console.log('加载的网络数据:', network)
-      // 转换为面板格式
+      console.log('边数据:', network.edges)
+      
+      // 转换为面板格式，最大流使用capacity（容量/吞吐量）
       nodes.value = network.nodes.map(n => n.id).join(',')
       edges.value = network.edges.map(e => `${e.from}-${e.to}-${e.capacity}`).join('\n')
+      
+      console.log('转换后的edges:', edges.value)
+      
       // 设置默认源点和汇点
       if (network.nodes.length > 0) {
         source.value = network.nodes[0].id
         sink.value = network.nodes[network.nodes.length - 1].id
       }
+      
+      // 清空后重新构建 visualEdges，确保响应式更新
+      visualEdges.value = []
+      await nextTick()
+      
+      visualEdges.value = network.edges.map(e => ({
+        from: e.from,
+        to: e.to,
+        capacity: e.capacity
+      }))
+      
+      console.log('更新后的visualEdges:', visualEdges.value)
+      
+      // 如枟在可视化模式，刷新预览
+      if (inputMode.value === 'visual') {
+        setTimeout(() => refreshPreview(), 200)
+      }
+      
       return true
     }
     return false
   } catch (err) {
     console.error('加载网络数据失败:', err)
+    console.error(err)
     return false
   }
 }
 
-function loadConfiguredNetwork() {
-  const loaded = loadNetworkFromStorage()
+async function loadConfiguredNetwork() {
+  const loaded = await loadNetworkFromStorage()
   if (loaded) {
     error.value = null
     console.log('网络配置已加载')
@@ -381,8 +416,9 @@ async function refreshPreview() {
 
 // 监听输入模式切换
 watch(inputMode, async (newMode) => {
-  if (newMode === 'visual' && visualEdges.value.length === 0) {
-    const parsed = edges.value.split('\\n').map(line => {
+  if (newMode === 'visual') {
+    // 从文本模式切换到可视化模式时，总是解析现有边数据
+    const parsed = edges.value.split('\n').map(line => {
       const p = line.trim().split('-')
       if (p.length === 3) {
         return { 
@@ -394,9 +430,12 @@ watch(inputMode, async (newMode) => {
       return null
     }).filter(e => e)
     visualEdges.value = parsed
-    await refreshPreview()
+    // 刷新预览
+    if (parsed.length > 0) {
+      await refreshPreview()
+    }
   } else if (newMode === 'text') {
-    edges.value = visualEdges.value.map(e => `${e.from}-${e.to}-${e.capacity}`).join('\\n')
+    edges.value = visualEdges.value.map(e => `${e.from}-${e.to}-${e.capacity}`).join('\n')
   }
 })
 
