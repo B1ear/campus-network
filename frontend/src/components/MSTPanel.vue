@@ -104,6 +104,12 @@
       </div>
     </div>
 
+    <!-- 加载进度提示 -->
+    <div v-if="loading && loadingMessage" class="loading-box">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">{{ loadingMessage }}</div>
+    </div>
+    
     <!-- 错误提示 -->
     <div v-if="error" class="error-box">
       ❌ {{ error }}
@@ -139,6 +145,27 @@
         </div>
       </div>
 
+      <!-- 动画演示区域 -->
+      <div class="animation-section" v-if="result && (result.kruskal.steps || result.prim.steps)">
+        <h3 class="section-title">🎬 算法动态演示</h3>
+        <div class="animation-grid">
+          <div class="animation-wrapper" v-if="result.kruskal.steps">
+            <AnimationPlayer 
+              :steps="result.kruskal.steps" 
+              title="Kruskal 算法步骤"
+              @step-change="onKruskalStepChange"
+            />
+          </div>
+          <div class="animation-wrapper" v-if="result.prim.steps">
+            <AnimationPlayer 
+              :steps="result.prim.steps" 
+              title="Prim 算法步骤"
+              @step-change="onPrimStepChange"
+            />
+          </div>
+        </div>
+      </div>
+      
       <!-- 可视化对比 -->
       <div class="visualization-comparison">
         <div class="viz-card">
@@ -192,6 +219,7 @@ import { ref, computed, onMounted, inject, watch } from 'vue'
 import { api } from '../api/backend.js'
 import ImageViewer from './ImageViewer.vue'
 import EdgeEditor from './EdgeEditor.vue'
+import AnimationPlayer from './AnimationPlayer.vue'
 // 生成20节点全联通图
 function generateConnectedGraph() {
   const nodeCount = 20
@@ -242,6 +270,7 @@ const algo = ref('kruskal')
 const loading = ref(false)
 const result = ref(null)
 const error = ref(null)
+const loadingMessage = ref('')
 const inputMode = ref('visual') // 'text' or 'visual'
 const visualEdges = ref([])
 const previewImage = ref(null)
@@ -299,12 +328,19 @@ async function calc() {
       throw new Error('请输入有效数据')
     }
     
+    // 显示计算进度
+    loadingMessage.value = '正在比较Kruskal和Prim算法...'
+    
     // 调用比较接口，同时运行两种算法
     result.value = await api.mstCompare(n, e)
+    
+    loadingMessage.value = '完成！'
+    await new Promise(resolve => setTimeout(resolve, 500))
   } catch (err) {
     error.value = err.message
   } finally {
     loading.value = false
+    loadingMessage.value = ''
   }
 }
 function example() { 
@@ -476,6 +512,17 @@ watch(visualEdges, () => {
     }, 1000)
   }
 }, { deep: true })
+
+// 动画步骤变化处理
+function onKruskalStepChange(stepIndex, stepData) {
+  // 可以在这里添加额外的视觉反馈
+  console.log('Kruskal step:', stepIndex, stepData)
+}
+
+function onPrimStepChange(stepIndex, stepData) {
+  // 可以在这里添加额外的视觉反馈
+  console.log('Prim step:', stepIndex, stepData)
+}
 </script>
 
 <style scoped>
@@ -826,6 +873,50 @@ h2 {
   background: #e0e0e0;
 }
 
+/* 加载进度提示 */
+.loading-box {
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  color: white;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  animation: slideIn 0.3s ease-out;
+}
+
+.loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.loading-text {
+  font-size: 1rem;
+  flex: 1;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* 错误提示 */
 .error-box {
   padding: 1rem;
@@ -1033,6 +1124,33 @@ h2 {
   font-weight: bold;
 }
 
+/* 动画区域 */
+.animation-section {
+  margin-bottom: 2rem;
+}
+
+.section-title {
+  color: #1f2937;
+  font-size: 1.3rem;
+  font-weight: 600;
+  margin: 0 0 1.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 3px solid #667eea;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.animation-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+}
+
+.animation-wrapper {
+  min-width: 0;
+}
+
 /* 响应式设计 */
 @media (max-width: 1200px) {
   .input-section {
@@ -1046,6 +1164,10 @@ h2 {
   .comparison-grid {
     grid-template-columns: 1fr;
     gap: 1rem;
+  }
+  
+  .animation-grid {
+    grid-template-columns: 1fr;
   }
 }
 

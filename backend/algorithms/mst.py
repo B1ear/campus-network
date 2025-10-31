@@ -27,19 +27,20 @@ def parse_input(data_str):
 # =========================================================
 # 2. Prim 算法
 # =========================================================
-def prim_mst(n, edges):
+def prim_mst(n, edges, return_steps=False, nodes_list=None, edges_list=None):
     """
     Prim算法实现，支持0索引节点
     
     Args:
         n: 节点数量（从0到n-1或从1到n）
         edges: 边列表 [(u, v, weight), ...]
+        return_steps: 是否返回步骤信息用于动画
     
     Returns:
-        (mst_edges, total_cost)
+        (mst_edges, total_cost) 或 (mst_edges, total_cost, steps)
     """
     if not edges:
-        return [], 0
+        return ([], 0, []) if return_steps else ([], 0)
     
     # 自动检测节点的最小值（判断是0索引还是1索引）
     all_nodes = set()
@@ -63,31 +64,73 @@ def prim_mst(n, edges):
     selected[start_node] = True
     mst_edges = []
     total_cost = 0
+    steps = []
     
-    for _ in range(node_count - 1):
+    if return_steps:
+        from algorithms.utils import draw_mst_step_visualization
+        viz = None
+        if nodes_list and edges_list:
+            viz = draw_mst_step_visualization(nodes_list, edges_list, [], 
+                                             None, [], [start_node], "Prim")
+        steps.append({
+            'step': 0,
+            'description': f'初始化：从节点 {start_node} 开始',
+            'selected_nodes': [start_node],
+            'mst_edges': [],
+            'current_edge': None,
+            'candidate_edges': [],
+            'visualization': viz
+        })
+    
+    for step_num in range(node_count - 1):
         min_w = float("inf")
         a = b = -1
+        candidate_edges = []
         
         for u in range(min_node, max_node + 1):
             if selected[u]:
                 for v, w in adj[u]:
-                    if not selected[v] and w < min_w:
-                        min_w = w
-                        a, b = u, v
+                    if not selected[v]:
+                        candidate_edges.append((u, v, w))
+                        if w < min_w:
+                            min_w = w
+                            a, b = u, v
         
         if a != -1:
             selected[b] = True
             mst_edges.append((a, b, min_w))
             total_cost += min_w
+            
+            if return_steps:
+                viz = None
+                if nodes_list and edges_list:
+                    viz = draw_mst_step_visualization(
+                        nodes_list, edges_list, mst_edges, 
+                        (a, b, min_w), candidate_edges,
+                        [node for node in range(min_node, max_node + 1) if selected[node]],
+                        "Prim"
+                    )
+                steps.append({
+                    'step': step_num + 1,
+                    'description': f'选择边 ({a}, {b}) 权重 {min_w}，将节点 {b} 加入MST',
+                    'selected_nodes': [node for node in range(min_node, max_node + 1) if selected[node]],
+                    'mst_edges': [(u, v, w) for u, v, w in mst_edges],
+                    'current_edge': (a, b, min_w),
+                    'candidate_edges': candidate_edges,
+                    'visualization': viz
+                })
     
+    if return_steps:
+        return mst_edges, total_cost, steps
     return mst_edges, total_cost
 
 
 # =========================================================
 # 3. Kruskal 算法
 # =========================================================
-def kruskal_mst(n, edges):
+def kruskal_mst(n, edges, return_steps=False, nodes_list=None, edges_list=None):
     parent = [i for i in range(n + 1)]
+    steps = []
 
     def find(x):
         if parent[x] != x:
@@ -103,14 +146,55 @@ def kruskal_mst(n, edges):
 
     mst_edges = []
     total_cost = 0
-    edges = sorted(edges, key=lambda x: x[2])  # 按造价排序
+    sorted_edges = sorted(edges, key=lambda x: x[2])  # 按造价排序
+    
+    if return_steps:
+        from algorithms.utils import draw_mst_step_visualization
+        viz = None
+        if nodes_list and edges_list:
+            viz = draw_mst_step_visualization(nodes_list, edges_list, [], 
+                                             None, None, None, "Kruskal")
+        steps.append({
+            'step': 0,
+            'description': f'初始化：将所有边按权重排序，共 {len(sorted_edges)} 条边',
+            'sorted_edges': [(u, v, w) for u, v, w in sorted_edges],
+            'mst_edges': [],
+            'current_edge': None,
+            'accepted': None,
+            'visualization': viz
+        })
 
-    for u, v, w in edges:
-        if union(u, v):
+    for idx, (u, v, w) in enumerate(sorted_edges):
+        will_form_cycle = find(u) == find(v)
+        accepted = union(u, v)
+        
+        if accepted:
             mst_edges.append((u, v, w))
             total_cost += w
+        
+        if return_steps:
+            viz = None
+            if nodes_list and edges_list:
+                viz = draw_mst_step_visualization(
+                    nodes_list, edges_list, mst_edges,
+                    (u, v, w), None, None, "Kruskal"
+                )
+            steps.append({
+                'step': idx + 1,
+                'description': f'检查边 ({u}, {v}) 权重 {w}: {"\接\受\，\加\入MST" if accepted else "\拒\绝\，\形\成\环"}',
+                'sorted_edges': [(x, y, z) for x, y, z in sorted_edges],
+                'mst_edges': [(x, y, z) for x, y, z in mst_edges],
+                'current_edge': (u, v, w),
+                'accepted': accepted,
+                'would_form_cycle': will_form_cycle,
+                'visualization': viz
+            })
+        
         if len(mst_edges) == n - 1:
             break
+    
+    if return_steps:
+        return mst_edges, total_cost, steps
     return mst_edges, total_cost
 
 

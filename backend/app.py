@@ -42,16 +42,24 @@ def compare_mst():
         n = len(nodes) if nodes else max(max(e['from'], e['to']) for e in edges)
         edge_list = [(e['from'], e['to'], e['weight']) for e in edges]
         
-        # 运行Kruskal算法并计时
+        # 运行Kruskal算法并计时（只计时算法本身）
         import time
         start_time = time.perf_counter()
-        kruskal_edges, kruskal_weight = kruskal_mst(n, edge_list)
+        kruskal_edges, kruskal_weight = kruskal_mst(n, edge_list, return_steps=False)
         kruskal_time = (time.perf_counter() - start_time) * 1000  # 转换为毫秒
         
-        # 运行Prim算法并计时
+        # 运行Prim算法并计时（只计时算法本身）
         start_time = time.perf_counter()
-        prim_edges, prim_weight = prim_mst(n, edge_list)
+        prim_edges, prim_weight = prim_mst(n, edge_list, return_steps=False)
         prim_time = (time.perf_counter() - start_time) * 1000  # 转换为毫秒
+        
+        # 生成步骤（不计入算法运行时间）
+        _, _, kruskal_steps = kruskal_mst(
+            n, edge_list, return_steps=True, nodes_list=nodes, edges_list=edges
+        )
+        _, _, prim_steps = prim_mst(
+            n, edge_list, return_steps=True, nodes_list=nodes, edges_list=edges
+        )
         
         # 转换回前端格式
         kruskal_result = [{'from': u, 'to': v, 'weight': w} for u, v, w in kruskal_edges]
@@ -67,14 +75,16 @@ def compare_mst():
                 'mst_edges': kruskal_result,
                 'total_weight': kruskal_weight,
                 'time_ms': round(kruskal_time, 4),
-                'visualization': kruskal_viz
+                'visualization': kruskal_viz,
+                'steps': kruskal_steps
             },
             'prim': {
                 'algorithm': 'Prim',
                 'mst_edges': prim_result,
                 'total_weight': prim_weight,
                 'time_ms': round(prim_time, 4),
-                'visualization': prim_viz
+                'visualization': prim_viz,
+                'steps': prim_steps
             },
             'comparison': {
                 'weights_match': kruskal_weight == prim_weight,
@@ -192,7 +202,7 @@ def calculate_edmonds_karp():
         edge_str = ''.join([f"({e['from']},{e['to']},{e.get('capacity', e.get('weight', 0))})" for e in edges])
         
         # 调用最大流算法
-        result = maxflow_main(edge_str, source=source, sink=sink, do_plot=False)
+        result = maxflow_main(edge_str, source=source, sink=sink, do_plot=False, return_steps=True)
         
         flow_edges_list = [{'from': u, 'to': v, 'flow': f} for (u, v), f in result['ek']['flows'].items() if f > 0]
         
@@ -206,7 +216,8 @@ def calculate_edmonds_karp():
             'source': source,
             'sink': sink,
             'time': result['ek']['time'],
-            'visualization': visualization
+            'visualization': visualization,
+            'steps': result['ek'].get('steps', [])
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -229,7 +240,7 @@ def calculate_dinic():
         edge_str = ''.join([f"({e['from']},{e['to']},{e.get('capacity', e.get('weight', 0))})" for e in edges])
         
         # 调用最大流算法
-        result = maxflow_main(edge_str, source=source, sink=sink, do_plot=False)
+        result = maxflow_main(edge_str, source=source, sink=sink, do_plot=False, return_steps=True)
         
         flow_edges_list = [{'from': u, 'to': v, 'flow': f} for (u, v), f in result['dinic']['flows'].items() if f > 0]
         
@@ -243,7 +254,8 @@ def calculate_dinic():
             'source': source,
             'sink': sink,
             'time': result['dinic']['time'],
-            'visualization': visualization
+            'visualization': visualization,
+            'steps': result['dinic'].get('steps', [])
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500

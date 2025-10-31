@@ -117,38 +117,61 @@
       </div>
     </div>
 
+    <!-- 加载进度提示 -->
+    <div v-if="loading && loadingMessage" class="loading-box">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">{{ loadingMessage }}</div>
+    </div>
+    
     <div v-if="error" class="error-box">
       ❌ {{ error }}
     </div>
 
     <div class="result-section" v-if="result">
-      <div class="section">
-        <h3>结果</h3>
-        <div v-if="result">
-          <div style="padding: 1rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 6px; margin-bottom: 1rem;">
-            <div>算法: {{ result.algorithm }}</div>
-            <div style="font-size: 1.5rem; font-weight: bold;">最大流: {{ result.max_flow }}</div>
-            <div style="font-size: 0.9rem; opacity: 0.9;">源点: {{ result.source }} | 汇点: {{ result.sink }}</div>
-          </div>
-          
-          <!-- 可视化图片 -->
-          <div v-if="result.visualization" style="margin-bottom: 1.5rem; background: #f9f9f9; border: 2px solid #e0e0e0; border-radius: 8px; padding: 1rem;">
-            <h4 style="margin-top: 0;">算法可视化:</h4>
-            <img 
-              :src="'data:image/png;base64,' + result.visualization" 
-              alt="最大流可视化" 
-              class="viz-image" 
-              @click="openImageViewer('data:image/png;base64,' + result.visualization, result.algorithm + ' 最大流算法可视化')" 
-              title="点击放大"
-              style="max-width: 100%; height: auto; border-radius: 4px; cursor: zoom-in; transition: all 0.3s ease;" 
-              @mouseover="$event.target.style.transform = 'scale(1.02)'; $event.target.style.boxShadow = '0 4px 16px rgba(102, 126, 234, 0.3)'"
-              @mouseout="$event.target.style.transform = 'scale(1)'; $event.target.style.boxShadow = 'none'"
-            />
-          </div>
-          
-          <h4>流量分配:</h4>
-          <div v-for="(e, i) in result.flow_edges" :key="i" style="padding: 0.5rem; background: #f5f5f5; margin: 0.5rem 0; border-left: 4px solid #667eea; border-radius: 4px;">
-            {{ e.from }} → {{ e.to }} <span style="color: #764ba2; font-weight: bold;">流量: {{ e.flow }}</span>
+      <div class="result-layout">
+        <!-- 左侧：动画演示区域 -->
+        <div class="animation-section" v-if="result.steps">
+          <h3 class="section-title">🎬 算法动态演示</h3>
+          <AnimationPlayer 
+            :steps="result.steps" 
+            :title="result.algorithm + ' 算法步骤'"
+            @step-change="onStepChange"
+          />
+        </div>
+        
+        <!-- 右侧：结果信息 -->
+        <div class="result-info-section">
+          <div class="section">
+            <h3>结果</h3>
+            <div v-if="result">
+              <div style="padding: 1rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 6px; margin-bottom: 1rem;">
+                <div>算法: {{ result.algorithm }}</div>
+                <div style="font-size: 1.5rem; font-weight: bold;">最大流: {{ result.max_flow }}</div>
+                <div style="font-size: 0.9rem; opacity: 0.9;">源点: {{ result.source }} | 汇点: {{ result.sink }}</div>
+              </div>
+              
+              <!-- 可视化图片 -->
+              <div v-if="result.visualization" style="margin-bottom: 1.5rem; background: #f9f9f9; border: 2px solid #e0e0e0; border-radius: 8px; padding: 1rem;">
+                <h4 style="margin-top: 0;">算法可视化:</h4>
+                <img 
+                  :src="'data:image/png;base64,' + result.visualization" 
+                  alt="最大流可视化" 
+                  class="viz-image" 
+                  @click="openImageViewer('data:image/png;base64,' + result.visualization, result.algorithm + ' 最大流算法可视化')" 
+                  title="点击放大"
+                  style="max-width: 100%; height: auto; border-radius: 4px; cursor: zoom-in; transition: all 0.3s ease;" 
+                  @mouseover="$event.target.style.transform = 'scale(1.02)'; $event.target.style.boxShadow = '0 4px 16px rgba(102, 126, 234, 0.3)'"
+                  @mouseout="$event.target.style.transform = 'scale(1)'; $event.target.style.boxShadow = 'none'"
+                />
+              </div>
+              
+              <h4>流量分配:</h4>
+              <div class="flow-edges-list">
+                <div v-for="(e, i) in result.flow_edges" :key="i" class="flow-edge-item">
+                  {{ e.from }} → {{ e.to }} <span class="flow-value">流量: {{ e.flow }}</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -169,6 +192,7 @@ import { ref, computed, onMounted, inject, watch, nextTick } from 'vue'
 import { api } from '../api/backend.js'
 import ImageViewer from './ImageViewer.vue'
 import EdgeEditor from './EdgeEditor.vue'
+import AnimationPlayer from './AnimationPlayer.vue'
 // 生成20节点全联通图
 function generateConnectedGraph() {
   const nodeCount = 20
@@ -221,6 +245,7 @@ const algo = ref('edmonds-karp')
 const loading = ref(false)
 const result = ref(null)
 const error = ref(null)
+const loadingMessage = ref('')
 const inputMode = ref('visual') // 'text' or 'visual'
 const visualEdges = ref([])
 const previewImage = ref(null)
@@ -266,13 +291,33 @@ const parseEdges = computed(() => {
   }).filter(e => e)
 })
 async function calc() {
-  error.value = null; result.value = null; loading.value = true
+  error.value = null
+  result.value = null
+  loading.value = true
+  
   try {
-    const n = parseNodes.value; const e = parseEdges.value
+    const n = parseNodes.value
+    const e = parseEdges.value
+    
     if (!n.length || !e.length) throw new Error('请输入有效数据')
     if (!n.includes(source.value) || !n.includes(sink.value)) throw new Error('源点和汇点必须在节点列表中')
-    result.value = algo.value === 'edmonds-karp' ? await api.maxflowEdmondsKarp(n, e, source.value, sink.value) : await api.maxflowDinic(n, e, source.value, sink.value)
-  } catch (err) { error.value = err.message } finally { loading.value = false }
+    
+    // 显示计算进度
+    const algoName = algo.value === 'edmonds-karp' ? 'Edmonds-Karp' : 'Dinic'
+    loadingMessage.value = `正在运行${algoName}算法...`
+    
+    result.value = algo.value === 'edmonds-karp' 
+      ? await api.maxflowEdmondsKarp(n, e, source.value, sink.value) 
+      : await api.maxflowDinic(n, e, source.value, sink.value)
+    
+    loadingMessage.value = '完成！'
+    await new Promise(resolve => setTimeout(resolve, 500))
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    loading.value = false
+    loadingMessage.value = ''
+  }
 }
 function example() { 
   // 使用指定的示例数据
@@ -449,6 +494,12 @@ watch(visualEdges, () => {
     }, 1000)
   }
 }, { deep: true })
+
+// 动画步骤变化处理
+function onStepChange(stepIndex, stepData) {
+  // 可以在这里添加额外的视觉反馈
+  console.log('MaxFlow step:', stepIndex, stepData)
+}
 </script>
 
 <style scoped>
@@ -688,6 +739,50 @@ h2 { color: #667eea; margin: 0 0 1rem; font-size: 1.5rem; font-weight: 600; }
 
 button:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
 
+/* 加载进度提示 */
+.loading-box {
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  color: white;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  animation: slideIn 0.3s ease-out;
+}
+
+.loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.loading-text {
+  font-size: 1rem;
+  flex: 1;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .error-box {
   padding: 1rem;
   background: #fef2f2;
@@ -700,6 +795,56 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important;
 
 .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
 .result-section { margin-top: 1.5rem; }
+
+/* 左右布局 */
+.result-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+/* 动画区域 */
+.animation-section {
+  position: sticky;
+  top: 2rem;
+}
+
+.result-info-section {
+  min-width: 0;
+}
+
+.section-title {
+  color: #1f2937;
+  font-size: 1.3rem;
+  font-weight: 600;
+  margin: 0 0 1.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 3px solid #667eea;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.flow-edges-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.flow-edge-item {
+  padding: 0.5rem;
+  background: #f5f5f5;
+  margin: 0.5rem 0;
+  border-left: 4px solid #667eea;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.flow-value {
+  color: #764ba2;
+  font-weight: bold;
+}
+
 .section {
   display: flex; 
   flex-direction: column; 
@@ -716,6 +861,16 @@ h4 { color: #1f2937; margin: 1rem 0 0.5rem; font-size: 1rem; font-weight: 600; }
 @media (max-width: 1200px) {
   .visual-layout { grid-template-columns: 1fr; }
   .preview-container { min-height: 300px; }
+}
+
+@media (max-width: 1200px) {
+  .result-layout {
+    grid-template-columns: 1fr;
+  }
+  
+  .animation-section {
+    position: static;
+  }
 }
 
 @media (max-width: 900px) { 

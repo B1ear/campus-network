@@ -55,9 +55,30 @@ def build_capacity_graph(edges):
 # ============================
 # Edmonds-Karp (BFS Ford-Fulkerson)
 # ============================
-def edmonds_karp(source, sink, capacity, adj):
+def edmonds_karp(source, sink, capacity, adj, return_steps=False, nodes=None, edges_list=None):
     # capacity is a dict (u,v)->remaining cap, modifies in-place
     flow = 0
+    steps = []
+    iteration = 0
+    fixed_layout = None  # 用于保存固定布局
+    
+    if return_steps:
+        from algorithms.utils import draw_maxflow_step_visualization, compute_fixed_layout
+        # 预先计算固定布局
+        if nodes and edges_list:
+            fixed_layout = compute_fixed_layout(nodes, edges_list)
+            viz = draw_maxflow_step_visualization(nodes, edges_list, source, sink, None, 0, "Edmonds-Karp", fixed_layout)
+        else:
+            viz = None
+        steps.append({
+            'step': 0,
+            'description': f'初始化：源点 {source}, 汇点 {sink}',
+            'flow': 0,
+            'path': None,
+            'bottleneck': None,
+            'visualization': viz
+        })
+    
     while True:
         parent = {source: None}
         q = deque([source])
@@ -75,8 +96,33 @@ def edmonds_karp(source, sink, capacity, adj):
                     q.append(v)
         if sink not in parent:
             break
+        
+        # 构建路径
+        path = []
+        v = sink
+        while v != source:
+            u = parent[v]
+            path.append((u, v))
+            v = u
+        path.reverse()
+        
         inc = bottleneck[sink]
         flow += inc
+        iteration += 1
+        
+        if return_steps:
+            viz = None
+            if nodes and edges_list:
+                viz = draw_maxflow_step_visualization(nodes, edges_list, source, sink, path, flow, "Edmonds-Karp", fixed_layout)
+            steps.append({
+                'step': iteration,
+                'description': f'找到增广路径，瓶颈值 {inc}',
+                'flow': flow,
+                'path': path,
+                'bottleneck': inc,
+                'visualization': viz
+            })
+        
         v = sink
         while v != source:
             u = parent[v]
@@ -85,6 +131,20 @@ def edmonds_karp(source, sink, capacity, adj):
             if u not in adj[v]:
                 adj[v].append(u)
             v = u
+    
+    if return_steps:
+        viz = None
+        if nodes and edges_list:
+            viz = draw_maxflow_step_visualization(nodes, edges_list, source, sink, None, flow, "Edmonds-Karp", fixed_layout)
+        steps.append({
+            'step': iteration + 1,
+            'description': f'没有更多增广路径，算法结束',
+            'flow': flow,
+            'path': None,
+            'bottleneck': None,
+            'visualization': viz
+        })
+        return flow, steps
     return flow
 
 
@@ -136,18 +196,71 @@ class Dinic:
             it[u] += 1
         return 0
 
-    def max_flow(self, s, t):
+    def max_flow(self, s, t, return_steps=False, nodes=None, edges_list=None):
         flow = 0
+        steps = []
+        iteration = 0
+        fixed_layout = None  # 用于保存固定布局
+        
+        if return_steps:
+            from algorithms.utils import draw_dinic_step_visualization, compute_fixed_layout
+            # 预先计算固定布局
+            if nodes and edges_list:
+                fixed_layout = compute_fixed_layout(nodes, edges_list)
+                viz = draw_dinic_step_visualization(nodes, edges_list, s, t, None, 0, 0, "Dinic", fixed_layout)
+            else:
+                viz = None
+            steps.append({
+                'step': 0,
+                'description': f'初始化Dinic算法：源点 {s}, 汇点 {t}',
+                'flow': 0,
+                'level': None,
+                'pushed': None,
+                'visualization': viz
+            })
+        
         while True:
             level = self.bfs_level(s, t)
             if t not in level:
+                if return_steps:
+                    viz = None
+                    if nodes and edges_list:
+                        viz = draw_dinic_step_visualization(nodes, edges_list, s, t, level, flow, 0, "Dinic", fixed_layout)
+                    steps.append({
+                        'step': iteration + 1,
+                        'description': '没有更多层次图，算法结束',
+                        'flow': flow,
+                        'level': level,
+                        'pushed': None,
+                        'visualization': viz
+                    })
                 break
+            
             it = defaultdict(int)
+            phase_flow = 0
             while True:
                 pushed = self.dfs_flow(s, t, float('inf'), level, it)
                 if pushed == 0:
                     break
                 flow += pushed
+                phase_flow += pushed
+            
+            iteration += 1
+            if return_steps:
+                viz = None
+                if nodes and edges_list:
+                    viz = draw_dinic_step_visualization(nodes, edges_list, s, t, level, flow, phase_flow, "Dinic", fixed_layout)
+                steps.append({
+                    'step': iteration,
+                    'description': f'完成一个阶段，本阶段增加流量 {phase_flow}',
+                    'flow': flow,
+                    'level': level,
+                    'pushed': phase_flow,
+                    'visualization': viz
+                })
+        
+        if return_steps:
+            return flow, steps
         return flow
 
     def flows_on_original_edges(self, orig_caps):
@@ -232,7 +345,7 @@ def plot_flows(edges, orig_caps, flows_ek, flows_dinic, title_ek="Edmonds-Karp",
 # ============================
 # 主流程：构造图、运行两种算法、计时、输出、绘图
 # ============================
-def main(input_data, source=SRC, sink=None, do_plot=True):
+def main(input_data, source=SRC, sink=None, do_plot=True, return_steps=False):
     edges = parse_directed_input(input_data)
     _, _, orig_caps, nodes = build_capacity_graph(edges)
     if sink is None:
@@ -243,8 +356,17 @@ def main(input_data, source=SRC, sink=None, do_plot=True):
     cap_ek_copy = copy.deepcopy(cap_ek)
     adj_ek_copy = copy.deepcopy(adj_ek)
 
+    # 准备可视化需要的数据
+    nodes_for_viz = list(nodes)
+    edges_for_viz = [{'from': u, 'to': v, 'capacity': w} for u, v, w in edges]
+    
     t0 = time.perf_counter()
-    maxflow_ek = edmonds_karp(source, sink, cap_ek_copy, adj_ek_copy)
+    if return_steps:
+        maxflow_ek, steps_ek = edmonds_karp(source, sink, cap_ek_copy, adj_ek_copy, 
+                                            return_steps=True, nodes=nodes_for_viz, edges_list=edges_for_viz)
+    else:
+        maxflow_ek = edmonds_karp(source, sink, cap_ek_copy, adj_ek_copy)
+        steps_ek = None
     t1 = time.perf_counter()
     time_ek = t1 - t0
     flows_ek = compute_sent_from_capacity(orig_caps, cap_ek_copy)
@@ -256,7 +378,12 @@ def main(input_data, source=SRC, sink=None, do_plot=True):
     for u, v, w in edges:
         dinic.add_edge(u, v, w)
     t0 = time.perf_counter()
-    maxflow_dinic = dinic.max_flow(source, sink)
+    if return_steps:
+        maxflow_dinic, steps_dinic = dinic.max_flow(source, sink, return_steps=True, 
+                                                    nodes=nodes_for_viz, edges_list=edges_for_viz)
+    else:
+        maxflow_dinic = dinic.max_flow(source, sink)
+        steps_dinic = None
     t1 = time.perf_counter()
     time_dinic = t1 - t0
     flows_dinic = dinic.flows_on_original_edges(orig_caps)
@@ -279,12 +406,17 @@ def main(input_data, source=SRC, sink=None, do_plot=True):
                    title_ek=f"Edmonds-Karp (flow={maxflow_ek}, t={time_ek:.4f}s)",
                    title_dinic=f"Dinic (flow={maxflow_dinic}, t={time_dinic:.4f}s)")
 
-    return {
+    result = {
         "edges": edges,
-        "orig_caps": orig_caps,
         "ek": {"maxflow": maxflow_ek, "time": time_ek, "flows": flows_ek},
         "dinic": {"maxflow": maxflow_dinic, "time": time_dinic, "flows": flows_dinic},
     }
+    
+    if return_steps:
+        result["ek"]["steps"] = steps_ek
+        result["dinic"]["steps"] = steps_dinic
+    
+    return result
 
 
 if __name__ == "__main__":
