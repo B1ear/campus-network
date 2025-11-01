@@ -33,18 +33,18 @@ export const api = {
   },
 
   // 最大流 - Edmonds-Karp
-  maxflowEdmondsKarp(nodes, edges, source, sink) {
+  maxflowEdmondsKarp(nodes, edges, source, sink, treatAsUndirected = false) {
     return request('/maxflow/edmonds-karp', {
       method: 'POST',
-      body: JSON.stringify({ nodes, edges, source, sink }),
+      body: JSON.stringify({ nodes, edges, source, sink, treat_as_undirected: !!treatAsUndirected }),
     })
   },
 
   // 最大流 - Dinic
-  maxflowDinic(nodes, edges, source, sink) {
+  maxflowDinic(nodes, edges, source, sink, treatAsUndirected = false) {
     return request('/maxflow/dinic', {
       method: 'POST',
-      body: JSON.stringify({ nodes, edges, source, sink }),
+      body: JSON.stringify({ nodes, edges, source, sink, treat_as_undirected: !!treatAsUndirected }),
     })
   },
 

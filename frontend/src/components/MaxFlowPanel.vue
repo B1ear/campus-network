@@ -143,7 +143,7 @@
         <div class="comparison-grid">
           <div class="metric-card ek">
             <div class="metric-label">Edmonds-Karp</div>
-            <div class="metric-value">{{ result.ek.time.toFixed(4) }} ms</div>
+            <div class="metric-value">{{ result.ek.time_ms.toFixed(2) }} ms</div>
             <div class="metric-extra">最大流: {{ result.ek.max_flow }}</div>
           </div>
           <div class="vs-divider">
@@ -156,7 +156,7 @@
           </div>
           <div class="metric-card dinic">
             <div class="metric-label">Dinic</div>
-            <div class="metric-value">{{ result.dinic.time.toFixed(4) }} ms</div>
+            <div class="metric-value">{{ result.dinic.time_ms.toFixed(2) }} ms</div>
             <div class="metric-extra">最大流: {{ result.dinic.max_flow }}</div>
           </div>
         </div>
@@ -297,6 +297,8 @@ const visualEdges = ref([])
 const previewImage = ref(null)
 const previewLoading = ref(false)
 const previewError = ref(null)
+// 是否将边按无向处理（用于从网络配置加载的图）
+const treatAsUndirected = ref(false)
 
 // 图片查看器状态
 const showImageViewer = ref(false)
@@ -353,11 +355,14 @@ async function calc() {
     loadingMessage.value = '正在运行 Edmonds-Karp 与 Dinic 算法...'
     
     const [ek, dinic] = await Promise.all([
-      api.maxflowEdmondsKarp(n, e, source.value, sink.value),
-      api.maxflowDinic(n, e, source.value, sink.value),
+      api.maxflowEdmondsKarp(n, e, source.value, sink.value, treatAsUndirected.value),
+      api.maxflowDinic(n, e, source.value, sink.value, treatAsUndirected.value),
     ])
 
-    // 统一结构与比较信息
+    // 统一结构与比较信息（将秒转换为毫秒用于展示）
+    const ekTimeMs = (ek.time || 0) * 1000;
+    const dinicTimeMs = (dinic.time || 0) * 1000;
+
     result.value = {
       ek: {
         algorithm: ek.algorithm,
@@ -365,7 +370,8 @@ async function calc() {
         flow_edges: ek.flow_edges || [],
         source: ek.source,
         sink: ek.sink,
-        time: ek.time,
+        time_s: ek.time,
+        time_ms: ekTimeMs,
         visualization: ek.visualization,
         steps: ek.steps || [],
       },
@@ -375,14 +381,15 @@ async function calc() {
         flow_edges: dinic.flow_edges || [],
         source: dinic.source,
         sink: dinic.sink,
-        time: dinic.time,
+        time_s: dinic.time,
+        time_ms: dinicTimeMs,
         visualization: dinic.visualization,
         steps: dinic.steps || [],
       },
       comparison: {
         match: ek.max_flow === dinic.max_flow,
-        faster_algorithm: (ek.time < dinic.time) ? 'Edmonds-Karp' : (ek.time > dinic.time ? 'Dinic' : '相同'),
-        time_difference_ms: Math.abs((ek.time || 0) - (dinic.time || 0)),
+        faster_algorithm: (ekTimeMs < dinicTimeMs) ? 'Edmonds-Karp' : (ekTimeMs > dinicTimeMs ? 'Dinic' : '相同'),
+        time_difference_ms: Math.abs(ekTimeMs - dinicTimeMs),
       },
     }
     
@@ -401,6 +408,9 @@ function example() {
   edges.value = defaultExampleData.edges
   source.value = defaultExampleData.source
   sink.value = defaultExampleData.sink
+  
+  // 示例数据为有向，关闭按无向处理
+  treatAsUndirected.value = false
   
   // 无论在什么模式下都同步更新visualEdges
   const parsed = edges.value.split('\n').map(line => {
@@ -454,7 +464,10 @@ async function loadNetworkFromStorage() {
       
       console.log('更新后的visualEdges:', visualEdges.value)
       
-      // 如枟在可视化模式，刷新预览
+      // 网络配置生成的是无向边，这里默认按无向处理
+      treatAsUndirected.value = true
+      
+      // 如果在可视化模式，刷新预览
       if (inputMode.value === 'visual') {
         setTimeout(() => refreshPreview(), 200)
       }

@@ -92,6 +92,82 @@ def setup_chinese_font():
     matplotlib.rcParams['axes.unicode_minus'] = False
 
 
+def draw_original_graph_directed(nodes, edges, label_mode='capacity'):
+    """
+    绘制原始有向图（专用于MaxFlow，与动态演示布局一致）
+    
+    Args:
+        nodes: 节点列表
+        edges: 边列表
+        label_mode: 'capacity' | 'cost' | 'auto'
+    
+    Returns:
+        base64编码的PNG图片
+    """
+    setup_chinese_font()
+    
+    # 使用compute_fixed_layout计算布局（与动态演示完全一致）
+    pos = compute_fixed_layout(nodes, edges)
+    
+    # 创建NetworkX有向图用于绘制
+    G = nx.DiGraph()
+    
+    # 添加节点
+    for node in nodes:
+        node_id = node['id'] if isinstance(node, dict) else node
+        G.add_node(node_id)
+    
+    # 添加边
+    for edge in edges:
+        G.add_edge(edge['from'], edge['to'], 
+                  weight=edge.get('weight', edge.get('cost', 0)),
+                  capacity=edge.get('capacity', None))
+    
+    # 绘图（与动态演示保持一致的尺寸）
+    fig, ax = plt.subplots(figsize=(16, 12))
+    
+    # 绘制所有边（蓝灰色，带箭头）
+    nx.draw_networkx_edges(G, pos, ax=ax, alpha=0.6, width=2, edge_color='#718096',
+                          arrows=True, arrowsize=15, arrowstyle='->',
+                          connectionstyle='arc3,rad=0.1')
+    
+    # 绘制节点
+    nx.draw_networkx_nodes(G, pos, ax=ax, node_color='#667eea', 
+                          node_size=800, alpha=0.9, edgecolors='#4c51bf', linewidths=2.5)
+    
+    # 绘制节点标签
+    nx.draw_networkx_labels(G, pos, ax=ax, font_size=12, font_weight='bold',
+                           font_color='white')
+    
+    # 边标签选择策略
+    def edge_label_for(e):
+        if label_mode == 'capacity':
+            return e.get('capacity', '')
+        if label_mode == 'cost':
+            return e.get('weight', e.get('cost', 0))
+        # auto: 优先显示容量
+        return e.get('capacity', e.get('weight', e.get('cost', 0)))
+    
+    edge_labels = {(e['from'], e['to']): edge_label_for(e) for e in edges}
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, ax=ax,
+                                font_size=10, font_color='#2d3748',
+                                bbox=dict(boxstyle='round,pad=0.3', facecolor='white', 
+                                         edgecolor='#cbd5e0', alpha=0.95))
+    
+    plt.title("原始路由图", fontsize=16, fontweight='bold', pad=20)
+    ax.axis('off')
+    plt.tight_layout()
+    
+    # 转换为base64（与动态演示保持一致）
+    buffer = io.BytesIO()
+    plt.savefig(buffer, format='png', dpi=120, facecolor='white', pad_inches=0.1)
+    buffer.seek(0)
+    image_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+    plt.close()
+    
+    return image_base64
+
+
 def draw_original_graph(nodes, edges, label_mode='auto'):
     """
     绘制原始图（不包含算法结果）
@@ -122,7 +198,7 @@ def draw_original_graph(nodes, edges, label_mode='auto'):
         G.add_edge(edge['from'], edge['to'], weight=edge.get('weight', edge.get('cost', 0)),
                    capacity=edge.get('capacity', None))
     
-    # 生成布局
+    # 统一使用无向图布局，保证与MST等算法的布局一致
     pos = nx.spring_layout(G, seed=42, k=2.5, iterations=100)
     
     # 绘图
@@ -145,8 +221,8 @@ def draw_original_graph(nodes, edges, label_mode='auto'):
             return e.get('capacity', '')
         if label_mode == 'cost':
             return e.get('weight', e.get('cost', 0))
-        # auto
-        return e.get('capacity', e.get('weight', e.get('cost', 0)))
+        # auto: 优先显示造价
+        return e.get('weight', e.get('cost', e.get('capacity', 0)))
     edge_labels = {(e['from'], e['to']): edge_label_for(e) for e in edges}
     nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, ax=ax,
                                 font_size=10, font_color='#2d3748',
@@ -761,13 +837,6 @@ def draw_maxflow_step_visualization(nodes, edges, source, sink, current_path=Non
 def compute_fixed_layout(nodes, edges):
     """
     预先计算固定的图形布局，保证所有步骤使用相同的布局
-    
-    Args:
-        nodes: 节点列表
-        edges: 边列表
-    
-    Returns:
-        dict: 节点位置字典 {node_id: (x, y)}
     """
     G = nx.DiGraph()
     

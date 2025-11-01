@@ -9,7 +9,7 @@ matplotlib.use("Agg")
 from algorithms.mst import kruskal_mst, prim_mst
 from algorithms.maxflow import main as maxflow_main
 from algorithms.aes_encrypt import AES128
-from algorithms.utils import validate_graph_data, save_plot, draw_mst_result, draw_maxflow_result, draw_original_graph
+from algorithms.utils import validate_graph_data, save_plot, draw_mst_result, draw_maxflow_result, draw_original_graph, draw_original_graph_directed
 from algorithms.generate_graph import generate_random_planar_network, draw_campus_network
 from config.network_config import NetworkConfig, DEFAULT_CONFIG
 from algorithms.traffic import calculate_paths_with_allocation
@@ -108,8 +108,13 @@ def preview_graph():
         if not validate_graph_data(nodes, edges):
             return jsonify({'error': 'Invalid graph data'}), 400
         
-        # 绘制原始图（按页面传入的标签模式）
-        visualization = draw_original_graph(nodes, edges, label_mode=label_mode)
+        # 根据 label_mode 选择绘图函数
+        if label_mode == 'capacity':
+            # MaxFlow 场景：使用有向图
+            visualization = draw_original_graph_directed(nodes, edges, label_mode=label_mode)
+        else:
+            # MST 场景：使用无向图
+            visualization = draw_original_graph(nodes, edges, label_mode=label_mode)
         
         return jsonify({
             'visualization': visualization,
@@ -131,30 +136,58 @@ def calculate_edmonds_karp():
         edges = data.get('edges', [])
         source = data.get('source')
         sink = data.get('sink')
+        treat_as_undirected = bool(data.get('treat_as_undirected', False))
         
         if not all([nodes, edges, source is not None, sink is not None]):
             return jsonify({'error': 'Missing required parameters'}), 400
         
-        # 构建输入字符串格式
-        edge_str = ''.join([f"({e['from']},{e['to']},{e.get('capacity', e.get('weight', 0))})" for e in edges])
+        # 构建输入字符串格式 + 可视化边列表
+        if treat_as_undirected:
+            # 将无向边展开为双向，按无向去重（(u,v) 与 (v,u) 视为同一对），容量取两方向的最大值
+            pair_caps = {}
+            for e in edges:
+                u, v = e['from'], e['to']
+                cap = e.get('capacity', e.get('weight', 0))
+                a, b = (u, v) if u <= v else (v, u)
+                key = (a, b)
+                pair_caps[key] = max(pair_caps.get(key, 0), cap)
+            parts = []
+            viz_edges = []
+            for (a, b), cap in pair_caps.items():
+                parts.append(f"({a},{b},{cap})")
+                parts.append(f"({b},{a},{cap})")
+                viz_edges.append({'from': a, 'to': b, 'capacity': cap})
+                viz_edges.append({'from': b, 'to': a, 'capacity': cap})
+            edge_str = ''.join(parts)
+        else:
+            viz_edges = edges
+            edge_str = ''.join([f"({e['from']},{e['to']},{e.get('capacity', e.get('weight', 0))})" for e in edges])
         
-        # 调用最大流算法
-        result = maxflow_main(edge_str, source=source, sink=sink, do_plot=False, return_steps=True)
+        # 先测纯算法时间（不生成步骤）
+        result_plain = maxflow_main(edge_str, source=source, sink=sink, do_plot=False, return_steps=False)
+        # 再生成步骤与可视化（包含额外开销）
+        result_steps = maxflow_main(edge_str, source=source, sink=sink, do_plot=False, return_steps=True)
         
-        flow_edges_list = [{'from': u, 'to': v, 'flow': f} for (u, v), f in result['ek']['flows'].items() if f > 0]
+        flow_edges_list = [{'from': u, 'to': v, 'flow': f} for (u, v), f in result_plain['ek']['flows'].items() if f > 0]
         
-        # 生成可视化图片
-        visualization = draw_maxflow_result(nodes, edges, flow_edges_list, source, sink, result['ek']['maxflow'], "Edmonds-Karp")
+        # 生成可视化图片（基于纯算法结果）
+        visualization = draw_maxflow_result(nodes, viz_edges, flow_edges_list, source, sink, result_plain['ek']['maxflow'], "Edmonds-Karp")
+        
+        compute_time = result_plain['ek']['time']
+        total_time = result_steps['ek']['time']
+        viz_time = max(total_time - compute_time, 0.0)
         
         return jsonify({
             'algorithm': 'Edmonds-Karp',
-            'max_flow': result['ek']['maxflow'],
+            'max_flow': result_plain['ek']['maxflow'],
             'flow_edges': flow_edges_list,
             'source': source,
             'sink': sink,
-            'time': result['ek']['time'],
+            'time': compute_time,
+            'visualization_time': viz_time,
+            'total_time': total_time,
             'visualization': visualization,
-            'steps': result['ek'].get('steps', [])
+            'steps': result_steps['ek'].get('steps', [])
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -169,30 +202,57 @@ def calculate_dinic():
         edges = data.get('edges', [])
         source = data.get('source')
         sink = data.get('sink')
+        treat_as_undirected = bool(data.get('treat_as_undirected', False))
         
         if not all([nodes, edges, source is not None, sink is not None]):
             return jsonify({'error': 'Missing required parameters'}), 400
         
-        # 构建输入字符串格式
-        edge_str = ''.join([f"({e['from']},{e['to']},{e.get('capacity', e.get('weight', 0))})" for e in edges])
+        # 构建输入字符串格式 + 可视化边列表
+        if treat_as_undirected:
+            pair_caps = {}
+            for e in edges:
+                u, v = e['from'], e['to']
+                cap = e.get('capacity', e.get('weight', 0))
+                a, b = (u, v) if u <= v else (v, u)
+                key = (a, b)
+                pair_caps[key] = max(pair_caps.get(key, 0), cap)
+            parts = []
+            viz_edges = []
+            for (a, b), cap in pair_caps.items():
+                parts.append(f"({a},{b},{cap})")
+                parts.append(f"({b},{a},{cap})")
+                viz_edges.append({'from': a, 'to': b, 'capacity': cap})
+                viz_edges.append({'from': b, 'to': a, 'capacity': cap})
+            edge_str = ''.join(parts)
+        else:
+            viz_edges = edges
+            edge_str = ''.join([f"({e['from']},{e['to']},{e.get('capacity', e.get('weight', 0))})" for e in edges])
         
-        # 调用最大流算法
-        result = maxflow_main(edge_str, source=source, sink=sink, do_plot=False, return_steps=True)
+        # 先测纯算法时间（不生成步骤）
+        result_plain = maxflow_main(edge_str, source=source, sink=sink, do_plot=False, return_steps=False)
+        # 再生成步骤与可视化（包含额外开销）
+        result_steps = maxflow_main(edge_str, source=source, sink=sink, do_plot=False, return_steps=True)
         
-        flow_edges_list = [{'from': u, 'to': v, 'flow': f} for (u, v), f in result['dinic']['flows'].items() if f > 0]
+        flow_edges_list = [{'from': u, 'to': v, 'flow': f} for (u, v), f in result_plain['dinic']['flows'].items() if f > 0]
         
-        # 生成可视化图片
-        visualization = draw_maxflow_result(nodes, edges, flow_edges_list, source, sink, result['dinic']['maxflow'], "Dinic")
+        # 生成可视化图片（基于纯算法结果）
+        visualization = draw_maxflow_result(nodes, viz_edges, flow_edges_list, source, sink, result_plain['dinic']['maxflow'], "Dinic")
+        
+        compute_time = result_plain['dinic']['time']
+        total_time = result_steps['dinic']['time']
+        viz_time = max(total_time - compute_time, 0.0)
         
         return jsonify({
             'algorithm': 'Dinic',
-            'max_flow': result['dinic']['maxflow'],
+            'max_flow': result_plain['dinic']['maxflow'],
             'flow_edges': flow_edges_list,
             'source': source,
             'sink': sink,
-            'time': result['dinic']['time'],
+            'time': compute_time,
+            'visualization_time': viz_time,
+            'total_time': total_time,
             'visualization': visualization,
-            'steps': result['dinic'].get('steps', [])
+            'steps': result_steps['dinic'].get('steps', [])
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -309,8 +369,8 @@ def generate_network():
                 'weight': int(G.edges[u, v]['cost'])  # 用于MST
             })
         
-        # 生成拓扑图
-        topology_image = draw_campus_network(G, pos, return_base64=True)
+        # 生成拓扑图（网络配置时显示造价）
+        topology_image = draw_original_graph(nodes, edges, label_mode='cost')
         
         return jsonify({
             'config': config.to_dict(),
