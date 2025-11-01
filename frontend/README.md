@@ -3,100 +3,68 @@
 校园网络算法可视化平台前端
 
 ## 技术栈
+- Vue 3 + Vite
+- 原生 SVG 可视化
 
-- **Vue 3** - 渐进式JavaScript框架
-- **Vite** - 下一代前端构建工具
-- **原生SVG** - 图形可视化
+## 功能特性（与后端对齐）
+- 最小生成树（Kruskal/Prim 对比与可视化）
+- 最大流（Edmonds-Karp / Dinic，可视化）
+- AES-128 加解密（hex 格式）
+- 网络配置与拓扑生成（默认配置 + 随机生成）
+- 原始图预览
+- 路径与流量分配（交互仿真：single/balanced、k 条路径）
 
-## 功能特性
-
-### 1. 最小生成树 (MST)
-- ✅ Kruskal 算法
-- ✅ Prim 算法
-- ✅ 可视化图形展示
-- ✅ 实时计算结果
-
-### 2. 最大流 (Max Flow)
-- ✅ Edmonds-Karp 算法
-- ✅ Dinic 算法
-- ✅ 流量分配可视化
-- ✅ 性能对比
-
-### 3. AES加密
-- ✅ AES-128 加密
-- ✅ AES-128 解密
-- ✅ Base64 编码
-- ✅ 一键复制功能
-
-## 安装依赖
-
+## 安装与启动
 ```bash
 npm install
-```
-
-## 开发模式
-
-```bash
 npm run dev
 ```
+访问：`http://localhost:3000`
 
-访问 `http://localhost:3000`
-
-## 生产构建
-
+后端需先启动：
 ```bash
-npm run build
+cd ../backend
+python app.py
 ```
 
-构建产物在 `dist/` 目录
-
-## 预览生产版本
-
-```bash
-npm run preview
-```
+## 前端调用的后端 API
+见 `src/api/backend.js`，主要封装：
+- `mstCompare(nodes, edges)` → POST /api/mst/compare
+- `maxflowEdmondsKarp(nodes, edges, source, sink)` → POST /api/maxflow/edmonds-karp
+- `maxflowDinic(nodes, edges, source, sink)` → POST /api/maxflow/dinic
+- `aesEncrypt(plaintext, key)` / `aesDecrypt(encryptedHex, key)`
+- `getDefaultNetworkConfig()` / `generateNetwork(config)`
+- `previewGraph(nodes, edges, labelMode)`
+- `calculateTrafficPaths(nodes, edges, source, target, totalFlow, strategy, numPaths)`
 
 ## 项目结构
-
 ```
 frontend/
-├── index.html              # HTML入口
-├── package.json            # 依赖配置
-├── vite.config.js          # Vite配置
+├── index.html
+├── package.json
+├── vite.config.js
 └── src/
-    ├── main.js             # 应用入口
-    ├── App.vue             # 根组件
-    ├── style.css           # 全局样式
+    ├── main.js
+    ├── App.vue
     ├── api/
-    │   └── backend.js      # 后端API封装
+    │   └── backend.js
     └── components/
-        ├── MSTPanel.vue        # 最小生成树面板
-        ├── MaxFlowPanel.vue    # 最大流面板
-        ├── AESPanel.vue        # AES加密面板
-        └── NetworkGraph.vue    # 图形可视化组件
+        ├── AESPanel.vue
+        ├── AnimationPlayer.vue
+        ├── EdgeEditor.vue
+        ├── ImageViewer.vue
+        ├── InteractiveTrafficPanel.vue
+        ├── MSTPanel.vue
+        ├── MaxFlowPanel.vue
+        ├── NetworkConfigPanel.vue
+        └── Toast.vue
 ```
 
 ## 使用说明
-
-1. **启动后端服务**
-   ```bash
-   cd ../backend
-   python app.py
-   ```
-
-2. **启动前端服务**
-   ```bash
-   npm run dev
-   ```
-
-3. **访问应用**
-   - 打开浏览器访问 `http://localhost:3000`
-   - 选择相应的功能标签页
-   - 输入数据或加载示例
-   - 点击计算按钮查看结果
+1. 启动后端与前端
+2. 在“网络配置”生成或加载拓扑
+3. 使用“MST/最大流/交互式流量”等面板进行实验与可视化
 
 ## 注意事项
-
-- 确保后端服务已启动（默认端口5000）
-- 浏览器需要支持ES6+和SVG
-- 建议使用Chrome、Firefox或Edge浏览器
+- AES 接口采用 hex 编码；前端解密需传入 hex 字符串
+- 交互仿真仅使用 `/api/traffic/calculate-paths`（不含完整负载均衡模拟）

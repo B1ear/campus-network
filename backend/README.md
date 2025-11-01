@@ -1,6 +1,6 @@
 # Campus Network Backend
 
-基于Flask的校园网络算法后端API
+基于 Flask 的校园网络算法后端 API
 
 ## 安装依赖
 
@@ -14,147 +14,125 @@ pip install -r requirements.txt
 python app.py
 ```
 
-服务将在 `http://localhost:5000` 启动
+默认地址：`http://localhost:5000`
 
-## API文档
+## API 概览（已对齐前端实际使用）
+- POST /api/network/generate — 生成随机校园网络拓扑
+- GET  /api/network/config/default — 获取默认网络配置
+- POST /api/graph/preview — 绘制原始图
+- POST /api/mst/compare — 比较 Kruskal 与 Prim
+- POST /api/maxflow/edmonds-karp — Edmonds-Karp 最大流
+- POST /api/maxflow/dinic — Dinic 最大流
+- POST /api/aes/encrypt — AES-128 加密（输出 hex）
+- POST /api/aes/decrypt — AES-128 解密（输入 hex）
+- POST /api/traffic/calculate-paths — 路径与流量分配（交互仿真）
+- GET  /api/plots/<filename> — 获取生成图片（如需）
 
-### 健康检查
-```
-GET /api/health
-```
+## 详细说明与示例
 
-### 最小生成树 - Kruskal算法
+### 1) 生成网络拓扑
 ```
-POST /api/mst/kruskal
+POST /api/network/generate
 Content-Type: application/json
 
 {
-  "nodes": [0, 1, 2, 3],
-  "edges": [
-    {"from": 0, "to": 1, "weight": 10},
-    {"from": 1, "to": 2, "weight": 15},
-    {"from": 2, "to": 3, "weight": 4},
-    {"from": 0, "to": 3, "weight": 5}
-  ]
+  "num_nodes": 12,
+  "cost_range": [1, 20],
+  "capacity_range": [50, 300],
+  "seed": 42
 }
 ```
+响应包含：`config`、`nodes`、`edges`、`topology_image`(base64) 与统计信息。
 
-响应:
-```json
+### 2) 默认网络配置
+```
+GET /api/network/config/default
+```
+
+### 3) 原始图预览
+```
+POST /api/graph/preview
 {
-  "algorithm": "Kruskal",
-  "mst_edges": [...],
-  "total_weight": 19,
-  "plot_url": "/api/plots/kruskal_mst.png"
+  "nodes": [{"id":0,"label":"0"}, ...],
+  "edges": [{"from":0,"to":1,"weight":10,"capacity":100}, ...],
+  "label_mode": "auto"  // 可选
 }
 ```
+返回 `visualization`(base64)。
 
-### 最小生成树 - Prim算法
+### 4) 最小生成树对比
 ```
-POST /api/mst/prim
-Content-Type: application/json
-
+POST /api/mst/compare
 {
-  "nodes": [0, 1, 2, 3],
-  "edges": [
-    {"from": 0, "to": 1, "weight": 10},
-    {"from": 1, "to": 2, "weight": 15},
-    {"from": 2, "to": 3, "weight": 4},
-    {"from": 0, "to": 3, "weight": 5}
-  ],
-  "start_node": 0
+  "nodes": [...],
+  "edges": [{"from":0,"to":1,"weight":10}, ...]
 }
 ```
+返回 `kruskal` 与 `prim` 两套结果（含 steps 与 visualization）。
 
-### 最大流 - Edmonds-Karp算法
+### 5) 最大流（Edmonds-Karp / Dinic）
 ```
 POST /api/maxflow/edmonds-karp
-Content-Type: application/json
-
-{
-  "nodes": [0, 1, 2, 3],
-  "edges": [
-    {"from": 0, "to": 1, "capacity": 16},
-    {"from": 0, "to": 2, "capacity": 13},
-    {"from": 1, "to": 3, "capacity": 12},
-    {"from": 2, "to": 3, "capacity": 14}
-  ],
-  "source": 0,
-  "sink": 3
-}
-```
-
-响应:
-```json
-{
-  "algorithm": "Edmonds-Karp",
-  "max_flow": 23,
-  "flow_edges": [...],
-  "source": 0,
-  "sink": 3
-}
-```
-
-### 最大流 - Dinic算法
-```
 POST /api/maxflow/dinic
+{
+  "nodes": [...],
+  "edges": [{"from":0,"to":1,"capacity":16}, ...],
+  "source": 0,
+  "sink": 5
+}
 ```
-格式同 Edmonds-Karp
+返回 `max_flow`、`flow_edges`、`steps` 与 `visualization`。
 
-### AES加密
+### 6) AES 加密/解密（十六进制）
 ```
 POST /api/aes/encrypt
-Content-Type: application/json
-
 {
   "plaintext": "Hello World",
   "key": "my_secret_key"
 }
 ```
-
-响应:
-```json
-{
-  "plaintext": "Hello World",
-  "encrypted": "base64_encrypted_string",
-  "key_length": 13
-}
-```
-
-### AES解密
+响应：`encrypted` 为 hex 字符串；同时返回 `format: "hex"`。
 ```
 POST /api/aes/decrypt
-Content-Type: application/json
-
 {
-  "encrypted": "base64_encrypted_string",
+  "encrypted": "<hex_string>",
   "key": "my_secret_key"
 }
 ```
 
-响应:
-```json
+### 7) 路径与流量分配（交互仿真）
+```
+POST /api/traffic/calculate-paths
 {
-  "encrypted": "base64_encrypted_string",
-  "decrypted": "Hello World"
+  "nodes": [...],
+  "edges": [...],
+  "source": 0,
+  "target": 5,
+  "total_flow": 1000,
+  "strategy": "balanced",   // "single" | "balanced"
+  "num_paths": 3
 }
 ```
-
-### 获取生成的图像
-```
-GET /api/plots/<filename>
-```
+返回：
+- `paths`: 路径数组
+- `path_allocations`: 每条路径的 {flow, capacity, utilization}
+- `total_capacity`, `requested_flow`, `actual_flow`, `is_limited`, `num_paths`
 
 ## 项目结构
-
 ```
 backend/
-├── app.py                  # Flask应用主入口
-├── requirements.txt        # Python依赖
+├── app.py                    # Flask 应用入口与路由
+├── requirements.txt          # 依赖
 ├── algorithms/
-│   ├── mst.py             # 最小生成树算法
-│   ├── maxflow.py         # 最大流算法
-│   ├── aes_encrypt.py     # AES加密
-│   └── utils.py           # 工具函数
-└── static/plots/          # 生成的图像文件
+│   ├── mst.py               # MST 算法
+│   ├── maxflow.py           # 最大流算法
+│   ├── aes_encrypt.py       # AES-128 实现
+│   ├── traffic.py           # 路径与分配（calculate-paths）
+│   ├── generate_graph.py    # 随机网络生成
+│   └── utils.py             # 绘图与通用工具
+├── config/
+│   └── network_config.py    # 配置模型与默认配置
+└── static/plots/            # 生成的图像文件
 ```
+
+> 说明：鲁棒性与负载均衡模拟的历史接口已移除，后端与前端保持最小必要对齐。
