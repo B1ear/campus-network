@@ -8,6 +8,8 @@
 import re
 import time
 import networkx as nx
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 
@@ -181,7 +183,7 @@ def kruskal_mst(n, edges, return_steps=False, nodes_list=None, edges_list=None):
                 )
             steps.append({
                 'step': idx + 1,
-                'description': f'检查边 ({u}, {v}) 权重 {w}: {"\接\受\，\加\入MST" if accepted else "\拒\绝\，\形\成\环"}',
+                'description': f'检查边 ({u}, {v}) 权重 {w}: {"接受，加入 MST" if accepted else "拒绝，形成环"}',
                 'sorted_edges': [(x, y, z) for x, y, z in sorted_edges],
                 'mst_edges': [(x, y, z) for x, y, z in mst_edges],
                 'current_edge': (u, v, w),

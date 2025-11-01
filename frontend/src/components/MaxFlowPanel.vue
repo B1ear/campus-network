@@ -31,8 +31,14 @@
             <textarea v-model="edges" rows="4" placeholder="1-2-16&#10;1-3-13"></textarea>
           </div>
           <div class="source-sink-grid">
-            <div><label>源点:</label><input v-model.number="source" type="number" /></div>
-            <div><label>汇点:</label><input v-model.number="sink" type="number" /></div>
+            <div class="input-group-compact">
+              <label>源点:</label>
+              <input v-model.number="source" type="number" />
+            </div>
+            <div class="input-group-compact">
+              <label>汇点:</label>
+              <input v-model.number="sink" type="number" />
+            </div>
           </div>
         </div>
       </div>
@@ -47,8 +53,14 @@
                 <input v-model="nodes" placeholder="1,2,3,4,5" @input="updateVisualNodes" />
               </div>
               <div class="source-sink-inline">
-                <div><label>源点:</label><input v-model.number="source" type="number" /></div>
-                <div><label>汇点:</label><input v-model.number="sink" type="number" /></div>
+                <div class="input-group-compact">
+                  <label>源点:</label>
+                  <input v-model.number="source" type="number" />
+                </div>
+                <div class="input-group-compact">
+                  <label>汇点:</label>
+                  <input v-model.number="sink" type="number" />
+                </div>
               </div>
             </div>
             <div class="edge-stats">
@@ -99,14 +111,10 @@
         </div>
       </div>
 
-      <div class="algo-selector">
-        <label><input type="radio" v-model="algo" value="edmonds-karp" /> Edmonds-Karp</label>
-        <label><input type="radio" v-model="algo" value="dinic" /> Dinic</label>
-      </div>
 
       <div class="button-group">
         <button @click="calc" :disabled="loading" class="primary-btn">
-          {{ loading ? '🔄 计算中...' : '🚀 计算最大流' }}
+          {{ loading ? '🔄 计算中...' : '🚀 比较 Edmonds-Karp 与 Dinic' }}
         </button>
         <button @click="loadConfiguredNetwork" class="secondary-btn">
           💾 加载配置网络
@@ -127,55 +135,91 @@
       ❌ {{ error }}
     </div>
 
-    <div class="result-section" v-if="result">
-      <div class="result-layout">
-        <!-- 左侧：动画演示区域 -->
-        <div class="animation-section" v-if="result.steps">
-          <h3 class="section-title">🎬 算法动态演示</h3>
-          <AnimationPlayer 
-            :steps="result.steps" 
-            :title="result.algorithm + ' 算法步骤'"
-            @step-change="onStepChange"
-          />
+    <!-- 结果对比区域（对齐最小生成树布局） -->
+    <div v-if="result" class="results-container">
+      <!-- 性能对比卡片 -->
+      <div class="comparison-card">
+        <h3>⚡ 性能对比</h3>
+        <div class="comparison-grid">
+          <div class="metric-card ek">
+            <div class="metric-label">Edmonds-Karp</div>
+            <div class="metric-value">{{ result.ek.time.toFixed(4) }} ms</div>
+            <div class="metric-extra">最大流: {{ result.ek.max_flow }}</div>
+          </div>
+          <div class="vs-divider">
+            <div class="vs-icon">VS</div>
+            <div class="winner" v-if="result.comparison.faster_algorithm">
+              🏆 {{ result.comparison.faster_algorithm }} 更快
+              <br>
+              <small>快 {{ result.comparison.time_difference_ms.toFixed(4) }} ms</small>
+            </div>
+          </div>
+          <div class="metric-card dinic">
+            <div class="metric-label">Dinic</div>
+            <div class="metric-value">{{ result.dinic.time.toFixed(4) }} ms</div>
+            <div class="metric-extra">最大流: {{ result.dinic.max_flow }}</div>
+          </div>
         </div>
-        
-        <!-- 右侧：结果信息 -->
-        <div class="result-info-section">
-          <div class="section">
-            <h3>结果</h3>
-            <div v-if="result">
-              <div style="padding: 1rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 6px; margin-bottom: 1rem;">
-                <div>算法: {{ result.algorithm }}</div>
-                <div style="font-size: 1.5rem; font-weight: bold;">最大流: {{ result.max_flow }}</div>
-                <div style="font-size: 0.9rem; opacity: 0.9;">源点: {{ result.source }} | 汇点: {{ result.sink }}</div>
+        <div class="validation" :class="{ valid: result.comparison.match }">
+          {{ result.comparison.match ? '✅ 两种算法结果一致' : '⚠️ 结果不一致，请检查数据' }}
+        </div>
+      </div>
+
+      <!-- 动画演示区域（两个算法并列） -->
+      <div class="animation-section" v-if="(result.ek.steps && result.ek.steps.length) || (result.dinic.steps && result.dinic.steps.length)">
+        <h3 class="section-title">🎬 算法动态演示</h3>
+        <div class="animation-grid">
+          <div class="animation-wrapper" v-if="result.ek.steps && result.ek.steps.length">
+            <AnimationPlayer 
+              :steps="result.ek.steps" 
+              title="Edmonds-Karp 算法步骤"
+              @step-change="onEKStepChange"
+            />
+          </div>
+          <div class="animation-wrapper" v-if="result.dinic.steps && result.dinic.steps.length">
+            <AnimationPlayer 
+              :steps="result.dinic.steps" 
+              title="Dinic 算法步骤"
+              @step-change="onDinicStepChange"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- 可视化对比 -->
+      <div class="visualization-comparison">
+        <div class="viz-card">
+          <h3>🔴 Edmonds-Karp 结果</h3>
+          <img v-if="result.ek.visualization" :src="'data:image/png;base64,' + result.ek.visualization" 
+               alt="EK可视化" 
+               class="viz-image clickable"
+               @click="openImageViewer('data:image/png;base64,' + result.ek.visualization, 'Edmonds-Karp 最大流算法可视化')" />
+          <div class="edge-list">
+            <h4>流量分配 ({{ result.ek.flow_edges.length }} 条):</h4>
+            <div class="edges-grid">
+              <div v-for="(e, i) in result.ek.flow_edges" :key="'ek-' + i" class="edge-item">
+                {{ e.from }} → {{ e.to }} <span class="weight">({{ e.flow }})</span>
               </div>
-              
-              <!-- 可视化图片 -->
-              <div v-if="result.visualization" style="margin-bottom: 1.5rem; background: #f9f9f9; border: 2px solid #e0e0e0; border-radius: 8px; padding: 1rem;">
-                <h4 style="margin-top: 0;">算法可视化:</h4>
-                <img 
-                  :src="'data:image/png;base64,' + result.visualization" 
-                  alt="最大流可视化" 
-                  class="viz-image" 
-                  @click="openImageViewer('data:image/png;base64,' + result.visualization, result.algorithm + ' 最大流算法可视化')" 
-                  title="点击放大"
-                  style="max-width: 100%; height: auto; border-radius: 4px; cursor: zoom-in; transition: all 0.3s ease;" 
-                  @mouseover="$event.target.style.transform = 'scale(1.02)'; $event.target.style.boxShadow = '0 4px 16px rgba(102, 126, 234, 0.3)'"
-                  @mouseout="$event.target.style.transform = 'scale(1)'; $event.target.style.boxShadow = 'none'"
-                />
-              </div>
-              
-              <h4>流量分配:</h4>
-              <div class="flow-edges-list">
-                <div v-for="(e, i) in result.flow_edges" :key="i" class="flow-edge-item">
-                  {{ e.from }} → {{ e.to }} <span class="flow-value">流量: {{ e.flow }}</span>
-                </div>
+            </div>
+          </div>
+        </div>
+        <div class="viz-card">
+          <h3>🔵 Dinic 结果</h3>
+          <img v-if="result.dinic.visualization" :src="'data:image/png;base64,' + result.dinic.visualization" 
+               alt="Dinic可视化" 
+               class="viz-image clickable"
+               @click="openImageViewer('data:image/png;base64,' + result.dinic.visualization, 'Dinic 最大流算法可视化')" />
+          <div class="edge-list">
+            <h4>流量分配 ({{ result.dinic.flow_edges.length }} 条):</h4>
+            <div class="edges-grid">
+              <div v-for="(e, i) in result.dinic.flow_edges" :key="'dinic-' + i" class="edge-item">
+                {{ e.from }} → {{ e.to }} <span class="weight">({{ e.flow }})</span>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </div
     
     <!-- 图片查看器 -->
     <ImageViewer 
@@ -241,7 +285,6 @@ const nodes = ref(defaultExampleData.nodes)
 const edges = ref(defaultExampleData.edges)
 const source = ref(defaultExampleData.source)
 const sink = ref(defaultExampleData.sink)
-const algo = ref('edmonds-karp')
 const loading = ref(false)
 const result = ref(null)
 const error = ref(null)
@@ -259,6 +302,7 @@ const viewerImageAlt = ref('')
 
 // 获取全局网络配置
 const globalNetwork = inject('globalNetwork', null)
+
 
 onMounted(async () => {
   // 初始化可视化边数据
@@ -303,15 +347,44 @@ async function calc() {
     if (!n.includes(source.value) || !n.includes(sink.value)) throw new Error('源点和汇点必须在节点列表中')
     
     // 显示计算进度
-    const algoName = algo.value === 'edmonds-karp' ? 'Edmonds-Karp' : 'Dinic'
-    loadingMessage.value = `正在运行${algoName}算法...`
+    loadingMessage.value = '正在运行 Edmonds-Karp 与 Dinic 算法...'
     
-    result.value = algo.value === 'edmonds-karp' 
-      ? await api.maxflowEdmondsKarp(n, e, source.value, sink.value) 
-      : await api.maxflowDinic(n, e, source.value, sink.value)
+    const [ek, dinic] = await Promise.all([
+      api.maxflowEdmondsKarp(n, e, source.value, sink.value),
+      api.maxflowDinic(n, e, source.value, sink.value),
+    ])
+
+    // 统一结构与比较信息
+    result.value = {
+      ek: {
+        algorithm: ek.algorithm,
+        max_flow: ek.max_flow,
+        flow_edges: ek.flow_edges || [],
+        source: ek.source,
+        sink: ek.sink,
+        time: ek.time,
+        visualization: ek.visualization,
+        steps: ek.steps || [],
+      },
+      dinic: {
+        algorithm: dinic.algorithm,
+        max_flow: dinic.max_flow,
+        flow_edges: dinic.flow_edges || [],
+        source: dinic.source,
+        sink: dinic.sink,
+        time: dinic.time,
+        visualization: dinic.visualization,
+        steps: dinic.steps || [],
+      },
+      comparison: {
+        match: ek.max_flow === dinic.max_flow,
+        faster_algorithm: (ek.time < dinic.time) ? 'Edmonds-Karp' : (ek.time > dinic.time ? 'Dinic' : '相同'),
+        time_difference_ms: Math.abs((ek.time || 0) - (dinic.time || 0)),
+      },
+    }
     
     loadingMessage.value = '完成！'
-    await new Promise(resolve => setTimeout(resolve, 500))
+    await new Promise(resolve => setTimeout(resolve, 300))
   } catch (err) {
     error.value = err.message
   } finally {
@@ -495,10 +568,12 @@ watch(visualEdges, () => {
   }
 }, { deep: true })
 
-// 动画步骤变化处理
-function onStepChange(stepIndex, stepData) {
-  // 可以在这里添加额外的视觉反馈
-  console.log('MaxFlow step:', stepIndex, stepData)
+// 动画步骤变化处理（分别监听两种算法）
+function onEKStepChange(stepIndex, stepData) {
+  console.log('EK step:', stepIndex, stepData)
+}
+function onDinicStepChange(stepIndex, stepData) {
+  console.log('Dinic step:', stepIndex, stepData)
 }
 </script>
 
@@ -697,16 +772,38 @@ h2 { color: #667eea; margin: 0 0 1rem; font-size: 1.5rem; font-weight: 600; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.algo-selector {
-  display: flex;
-  gap: 2rem;
-  margin-bottom: 1rem;
-  padding: 0.75rem;
-  background: #f9fafb;
-  border-radius: 8px;
-}
+/* 性能对比样式（复用 MST 风格） */
+.results-container { display: flex; flex-direction: column; gap: 2rem; }
+.comparison-card { background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.comparison-card h3 { color: #333; margin: 0 0 1.2rem; font-size: 1.15rem; font-weight: 600; text-align: center; }
+.comparison-grid { display: grid; grid-template-columns: 1fr auto 1fr; gap: 2rem; align-items: center; margin-bottom: 1rem; }
+.metric-card { padding: 1.2rem; border-radius: 8px; text-align: center; }
+.metric-card.ek { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; }
+.metric-card.dinic { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; }
+.metric-label { font-size: 0.9rem; opacity: 0.9; margin-bottom: 0.4rem; }
+.metric-value { font-size: 1.6rem; font-weight: bold; margin-bottom: 0.4rem; }
+.metric-extra { font-size: 0.85rem; opacity: 0.85; }
+.vs-divider { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+.vs-icon { width: 50px; height: 50px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; display: flex; align-items: center; justify-content: center; font-size: 1rem; font-weight: bold; box-shadow: 0 2px 8px rgba(102,126,234,0.3); }
+.winner { padding: 0.6rem 1.2rem; background: #fff7ed; border: 2px solid #fbbf24; border-radius: 6px; color: #92400e; font-weight: 600; text-align: center; font-size: 0.9rem; }
+.validation { padding: 1rem; border-radius: 8px; text-align: center; font-weight: 500; }
+.validation.valid { background: #d1fae5; border: 2px solid #6ee7b7; color: #065f46; }
 
-.algo-selector label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }
+/* 动画与可视化布局 */
+.animation-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+.visualization-comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+.viz-card { background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.viz-image { width: 100%; height: auto; border-radius: 8px; border: 2px solid #e0e0e0; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s ease; }
+.viz-image.clickable { cursor: zoom-in; }
+.viz-image.clickable:hover { transform: scale(1.02); box-shadow: 0 4px 16px rgba(102,126,234,0.3); border-color: #667eea; }
+.edge-list { margin-top: 1rem; }
+.edges-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.5rem; max-height: 200px; overflow-y: auto; }
+.edge-item { padding: 0.5rem; background: #f5f5f5; border-radius: 6px; font-size: 0.9rem; text-align: center; border-left: 3px solid #667eea; }
+.edge-item .weight { color: #764ba2; font-weight: bold; }
+
+@media (max-width: 1200px) {
+  .animation-grid, .visualization-comparison { grid-template-columns: 1fr; }
+}
 
 .button-group {
   display: flex;
@@ -806,8 +903,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important;
 
 /* 动画区域 */
 .animation-section {
-  position: sticky;
-  top: 2rem;
+  margin-bottom: 2rem;
 }
 
 .result-info-section {
@@ -827,8 +923,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important;
 }
 
 .flow-edges-list {
-  max-height: 400px;
-  overflow-y: auto;
+  max-height: none;
+  overflow: visible;
 }
 
 .flow-edge-item {
@@ -858,6 +954,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important;
 h3 { color: #1f2937; border-bottom: 2px solid #667eea; padding-bottom: 0.75rem; margin: 0 0 1rem; font-size: 1.15rem; font-weight: 600; }
 h4 { color: #1f2937; margin: 1rem 0 0.5rem; font-size: 1rem; font-weight: 600; }
 
+
 @media (max-width: 1200px) {
   .visual-layout { grid-template-columns: 1fr; }
   .preview-container { min-height: 300px; }
@@ -872,6 +969,7 @@ h4 { color: #1f2937; margin: 1rem 0 0.5rem; font-size: 1rem; font-weight: 600; }
     position: static;
   }
 }
+
 
 @media (max-width: 900px) { 
   .layout { grid-template-columns: 1fr; }

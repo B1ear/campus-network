@@ -39,6 +39,18 @@ watch(() => props.show, (newVal) => {
   }
 })
 
+// 在可见状态下，跟随外部 src/alt 实时更新，支持放大后继续播放时的帧刷新
+watch(() => props.src, (val) => {
+  if (isVisible.value && typeof val === 'string') {
+    imageSrc.value = val
+  }
+})
+watch(() => props.alt, (val) => {
+  if (isVisible.value && typeof val === 'string') {
+    imageAlt.value = val
+  }
+})
+
 function close() {
   emit('close')
 }

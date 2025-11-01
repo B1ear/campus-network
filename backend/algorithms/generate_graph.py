@@ -1,8 +1,10 @@
 import math
 import random
 import networkx as nx
-import matplotlib.pyplot as plt
 import matplotlib
+# Use a non-GUI backend for any plotting
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 from matplotlib import font_manager
 import io
 import base64

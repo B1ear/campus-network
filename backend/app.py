@@ -2,6 +2,10 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import os
 import base64
+# Force headless Matplotlib for server-side rendering before any pyplot import
+os.environ.setdefault("MPLBACKEND", "Agg")
+import matplotlib
+matplotlib.use("Agg")
 from algorithms.mst import kruskal_mst, prim_mst, parse_input
 from algorithms.maxflow import main as maxflow_main
 from algorithms.aes_encrypt import AES128

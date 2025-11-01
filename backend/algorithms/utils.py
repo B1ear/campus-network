@@ -6,8 +6,10 @@ import os
 import io
 import base64
 import networkx as nx
-import matplotlib.pyplot as plt
 import matplotlib
+# Use a non-GUI backend for server-side rendering
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 from matplotlib import font_manager
 
 

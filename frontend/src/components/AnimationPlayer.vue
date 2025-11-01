@@ -89,21 +89,50 @@ const isPlaying = ref(false)
 const speed = ref(1)
 let playInterval = null
 
-// 图片查看器状态
+function startInterval() {
+  if (playInterval) return
+  playInterval = setInterval(() => {
+    nextStep()
+    if (!isPlaying.value) {
+      clearInterval(playInterval)
+      playInterval = null
+    }
+  }, 1000 / speed.value)
+}
+
+function stopInterval() {
+  if (playInterval) {
+    clearInterval(playInterval)
+    playInterval = null
+  }
+}
+
+// 图片查看器状态（支持放大后继续播放，实时跟随当前帧）
 const showImageViewer = ref(false)
 const viewerImageSrc = ref('')
 const viewerImageAlt = ref('')
+const viewerLiveFollow = ref(true)
 
 watch(currentStep, (newStep) => {
   emit('step-change', newStep, props.steps[newStep])
+  // 放大状态下保持实时刷新
+  if (showImageViewer.value && viewerLiveFollow.value) {
+    const step = props.steps[newStep]
+    if (step?.visualization) {
+      viewerImageSrc.value = 'data:image/png;base64,' + step.visualization
+      viewerImageAlt.value = step.description || '算法步骤可视化'
+    }
+  }
 })
 
 watch(() => props.steps, () => {
   currentStep.value = 0
   isPlaying.value = false
-  if (playInterval) {
-    clearInterval(playInterval)
-    playInterval = null
+  stopInterval()
+  // 步骤切换时，如果处于放大 & 跟随，则立即刷新首帧
+  if (showImageViewer.value && viewerLiveFollow.value && props.steps?.[0]?.visualization) {
+    viewerImageSrc.value = 'data:image/png;base64,' + props.steps[0].visualization
+    viewerImageAlt.value = props.steps[0].description || '算法步骤可视化'
   }
 })
 
@@ -143,40 +172,31 @@ function togglePlay() {
       currentStep.value = 0
     }
     
-    playInterval = setInterval(() => {
-      nextStep()
-      if (!isPlaying.value) {
-        clearInterval(playInterval)
-        playInterval = null
-      }
-    }, 1000 / speed.value)
+    startInterval()
   } else {
-    if (playInterval) {
-      clearInterval(playInterval)
-      playInterval = null
-    }
+    stopInterval()
   }
 }
 
 // 当速度改变时，重新启动定时器
 watch(speed, () => {
-  if (isPlaying.value && playInterval) {
-    clearInterval(playInterval)
-    playInterval = setInterval(() => {
-      nextStep()
-      if (!isPlaying.value) {
-        clearInterval(playInterval)
-        playInterval = null
-      }
-    }, 1000 / speed.value)
+  if (isPlaying.value) {
+    stopInterval()
+    startInterval()
   }
 })
 
 function handleImageClick() {
-  if (props.steps[currentStep.value]?.visualization) {
-    viewerImageSrc.value = 'data:image/png;base64,' + props.steps[currentStep.value].visualization
-    viewerImageAlt.value = props.steps[currentStep.value].description || '算法步骤可视化'
+  const step = props.steps[currentStep.value]
+  if (step?.visualization) {
+    viewerImageSrc.value = 'data:image/png;base64,' + step.visualization
+    viewerImageAlt.value = step.description || '算法步骤可视化'
+    viewerLiveFollow.value = true
     showImageViewer.value = true
+    // 放大后保持播放：若当前在播放，则确保定时器存在
+    if (isPlaying.value) {
+      startInterval()
+    }
   }
 }
 
@@ -185,9 +205,7 @@ function closeImageViewer() {
 }
 
 onUnmounted(() => {
-  if (playInterval) {
-    clearInterval(playInterval)
-  }
+  stopInterval()
 })
 </script>
 

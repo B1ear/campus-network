@@ -93,7 +93,7 @@
 
       <div class="button-group">
         <button @click="calc" :disabled="loading" class="primary-btn">
-          {{ loading ? '🔄 计算中...' : '🚀 比较两种算法' }}
+          {{ loading ? '🔄 计算中...' : '🚀 比较 Kruskal 与 Prim' }}
         </button>
         <button @click="loadConfiguredNetwork" class="secondary-btn">
           💾 加载配置网络
