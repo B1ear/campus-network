@@ -62,6 +62,9 @@
       :src="viewerImageSrc" 
       :alt="viewerImageAlt" 
       :show="showImageViewer" 
+      :showPlayControl="true"
+      :isPlaying="isPlaying"
+      @toggle-play="togglePlay"
       @close="closeImageViewer" 
     />
   </div>

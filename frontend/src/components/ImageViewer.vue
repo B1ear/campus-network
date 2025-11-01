@@ -5,6 +5,15 @@
         <div class="viewer-container" @click.stop>
           <button class="close-btn" @click="close">✕</button>
           <img :src="imageSrc" :alt="imageAlt" class="viewer-image" />
+          <div v-if="showPlayControl" class="viewer-controls">
+            <button 
+              class="play-toggle-btn"
+              @click.stop="togglePlay"
+              :title="isPlaying ? '暂停' : '播放'"
+            >
+              {{ isPlaying ? '⏸️ 暂停' : '▶️ 播放' }}
+            </button>
+          </div>
           <div v-if="imageAlt" class="image-caption">{{ imageAlt }}</div>
         </div>
       </div>
@@ -18,10 +27,12 @@ import { ref, watch } from 'vue'
 const props = defineProps({
   src: String,
   alt: String,
-  show: Boolean
+  show: Boolean,
+  showPlayControl: { type: Boolean, default: false },
+  isPlaying: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'toggle-play'])
 
 const isVisible = ref(false)
 const imageSrc = ref('')
@@ -53,6 +64,10 @@ watch(() => props.alt, (val) => {
 
 function close() {
   emit('close')
+}
+
+function togglePlay() {
+  emit('toggle-play')
 }
 
 // 键盘ESC关闭
@@ -118,6 +133,35 @@ if (typeof window !== 'undefined') {
   transform: scale(1.1);
 }
 
+.viewer-controls {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.play-toggle-btn {
+  position: static;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  transition: all 0.2s ease;
+}
+
+.play-toggle-btn:hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+}
+
 .viewer-image {
   max-width: 100%;
   max-height: 85vh;
@@ -168,6 +212,14 @@ if (typeof window !== 'undefined') {
     width: 36px;
     height: 36px;
     font-size: 1.2rem;
+  }
+
+  .viewer-controls {
+    margin-top: 10px;
+  }
+  .play-toggle-btn {
+    padding: 0.45rem 0.9rem;
+    font-size: 0.9rem;
   }
   
   .viewer-image {

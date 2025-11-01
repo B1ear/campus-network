@@ -30,12 +30,16 @@ class TrafficMonitor:
         self._initialize_traffic()
     
     def _build_graph(self):
-        """构建有向图"""
+        """构建有向图（对于无向边，双向添加）"""
         G = nx.DiGraph()
         for node in self.nodes:
             G.add_node(node['id'])
         for edge in self.edges:
             G.add_edge(edge['from'], edge['to'], 
+                      weight=edge.get('weight', 0),
+                      capacity=edge.get('capacity', 1000))
+            # 添加反向边（支持无向图）
+            G.add_edge(edge['to'], edge['from'], 
                       weight=edge.get('weight', 0),
                       capacity=edge.get('capacity', 1000))
         return G
@@ -127,12 +131,18 @@ class LoadBalancer:
         self.G = self._build_graph()
     
     def _build_graph(self):
-        """构建带权重的有向图"""
+        """构建带权重的有向图（对于无向边，双向添加）"""
         G = nx.DiGraph()
         for node in self.nodes:
             G.add_node(node['id'])
         for edge in self.edges:
+            # 添加正向边
             G.add_edge(edge['from'], edge['to'],
+                      weight=edge.get('weight', 1),
+                      capacity=edge.get('capacity', 1000),
+                      cost=edge.get('cost', edge.get('weight', 1)))
+            # 添加反向边（支持无向图）
+            G.add_edge(edge['to'], edge['from'],
                       weight=edge.get('weight', 1),
                       capacity=edge.get('capacity', 1000),
                       cost=edge.get('cost', edge.get('weight', 1)))
@@ -141,6 +151,7 @@ class LoadBalancer:
     def find_k_shortest_paths(self, source, target, k=3):
         """
         寻找k条最短路径（用于负载均衡）
+        使用混合策略：边不相交 + 边权重增加
         Args:
             source: 源节点
             target: 目标节点
@@ -149,7 +160,6 @@ class LoadBalancer:
             list: 路径列表
         """
         try:
-            # 使用Yen's算法找k条最短路径
             paths = []
             
             # 先找最短路径
@@ -159,27 +169,66 @@ class LoadBalancer:
             except nx.NetworkXNoPath:
                 return []
             
-            # 寻找其他短路径（简化版本）
-            for i in range(1, k):
-                # 使用简单的替代方法：暂时移除已使用的边
+            # 策略 1: 边不相交的路径
+            used_edges = set()
+            for path in paths:
+                for i in range(len(path) - 1):
+                    used_edges.add((path[i], path[i+1]))
+            
+            for attempt in range(1, k):
                 G_temp = self.G.copy()
                 
-                # 移除之前路径的一些边
-                if i < len(paths):
-                    for j in range(len(paths[-1]) - 1):
-                        u, v = paths[-1][j], paths[-1][j+1]
-                        if G_temp.has_edge(u, v):
-                            G_temp.remove_edge(u, v)
+                # 移除所有已使用的边
+                for u, v in used_edges:
+                    if G_temp.has_edge(u, v):
+                        G_temp.remove_edge(u, v)
                 
                 try:
                     path = nx.shortest_path(G_temp, source, target, weight='weight')
                     if path not in paths:
                         paths.append(path)
+                        # 将新路径的边加入已使用集合
+                        for i in range(len(path) - 1):
+                            used_edges.add((path[i], path[i+1]))
+                        
+                        if len(paths) >= k:
+                            break
                 except nx.NetworkXNoPath:
                     break
             
+            # 策略 2: 如果还需要更多路径，使用边权重增加方法
+            if len(paths) < k:
+                # 使用权重增加策略：将已使用的边权重增加，而不是删除
+                edge_penalty = {}
+                for path in paths:
+                    for i in range(len(path) - 1):
+                        edge = (path[i], path[i+1])
+                        edge_penalty[edge] = edge_penalty.get(edge, 0) + 1
+                
+                for attempt in range(len(paths), k):
+                    G_temp = self.G.copy()
+                    
+                    # 增加已使用边的权重
+                    for (u, v), penalty in edge_penalty.items():
+                        if G_temp.has_edge(u, v):
+                            original_weight = G_temp[u][v]['weight']
+                            G_temp[u][v]['weight'] = original_weight * (1 + penalty * 10)
+                    
+                    try:
+                        path = nx.shortest_path(G_temp, source, target, weight='weight')
+                        if path not in paths:
+                            paths.append(path)
+                            # 更新边的惩罚
+                            for i in range(len(path) - 1):
+                                edge = (path[i], path[i+1])
+                                edge_penalty[edge] = edge_penalty.get(edge, 0) + 1
+                    except nx.NetworkXNoPath:
+                        break
+            
             return paths
-        except Exception:
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
             return []
     
     def allocate_flow_equal(self, source, target, total_flow, k=3):
@@ -330,12 +379,15 @@ class CongestionController:
         self.G = self._build_graph()
     
     def _build_graph(self):
-        """构建图"""
+        """构建图（对于无向边，双向添加）"""
         G = nx.DiGraph()
         for node in self.nodes:
             G.add_node(node['id'])
         for edge in self.edges:
             G.add_edge(edge['from'], edge['to'],
+                      capacity=edge.get('capacity', 1000))
+            # 添加反向边（支持无向图）
+            G.add_edge(edge['to'], edge['from'],
                       capacity=edge.get('capacity', 1000))
         return G
     
@@ -410,6 +462,84 @@ class CongestionController:
                     })
         
         return suggestions
+
+
+def calculate_paths_with_allocation(nodes, edges, source, target, total_flow, 
+                                      strategy='balanced', num_paths=3):
+    """
+    计算路径和流量分配（用于交互式仿真）
+    Args:
+        nodes: 节点列表
+        edges: 边列表
+        source: 源节点
+        target: 目标节点
+        total_flow: 总流量
+        strategy: 策略 'single' 或 'balanced'
+        num_paths: 使用的路径数量
+    Returns:
+        dict: 包含路径列表和分配结果
+    """
+    balancer = LoadBalancer(nodes, edges)
+    
+    # 根据策略确定路径数量
+    k = 1 if strategy == 'single' else num_paths
+    
+    # 查找k条最短路径
+    paths = balancer.find_k_shortest_paths(source, target, k)
+    
+    if not paths:
+        return {'error': 'No path found', 'paths': [], 'path_allocations': []}
+    
+    # 计算每条路径的瓶颈容量
+    path_capacities = []
+    for path in paths:
+        min_capacity = float('inf')
+        for i in range(len(path) - 1):
+            u, v = path[i], path[i+1]
+            capacity = balancer.G[u][v].get('capacity', 1000)
+            min_capacity = min(min_capacity, capacity)
+        path_capacities.append(min_capacity)
+    
+    # 计算总容量
+    total_capacity = sum(path_capacities)
+    
+    # 检查是否超过容量
+    actual_flow = min(total_flow, total_capacity)
+    is_limited = actual_flow < total_flow
+    
+    # 按策略分配流量
+    path_allocations = []
+    if strategy == 'single':
+        # 单路径：使用实际流量，但不超过路径容量
+        flow = min(actual_flow, path_capacities[0])
+        path_allocations.append({
+            'flow': flow,
+            'capacity': path_capacities[0],
+            'utilization': flow / path_capacities[0] if path_capacities[0] > 0 else 0
+        })
+    else:
+        # 负载均衡：按容量比例分配
+        for capacity in path_capacities:
+            if total_capacity > 0:
+                flow = (capacity / total_capacity) * actual_flow
+                flow = min(flow, capacity)
+            else:
+                flow = 0
+            path_allocations.append({
+                'flow': flow,
+                'capacity': capacity,
+                'utilization': flow / capacity if capacity > 0 else 0
+            })
+    
+    return {
+        'paths': paths,
+        'path_allocations': path_allocations,
+        'total_capacity': total_capacity,
+        'requested_flow': total_flow,
+        'actual_flow': actual_flow,
+        'is_limited': is_limited,
+        'num_paths': len(paths)
+    }
 
 
 def simulate_traffic_load_balancing(nodes, edges, source, target, total_flow, 

@@ -13,7 +13,7 @@ from algorithms.utils import validate_graph_data, save_plot, draw_mst_result, dr
 from algorithms.generate_graph import generate_random_planar_network, draw_campus_network
 from config.network_config import NetworkConfig, DEFAULT_CONFIG
 from algorithms.robustness import RobustnessAnalyzer, analyze_network_robustness
-from algorithms.traffic import simulate_traffic_load_balancing
+from algorithms.traffic import simulate_traffic_load_balancing, calculate_paths_with_allocation
 from algorithms.utils import draw_robustness_result, draw_traffic_load_balancing
 
 app = Flask(__name__)
@@ -140,12 +140,13 @@ def preview_graph():
         data = request.get_json()
         nodes = data.get('nodes', [])
         edges = data.get('edges', [])
+        label_mode = data.get('label_mode', 'auto')
         
         if not validate_graph_data(nodes, edges):
             return jsonify({'error': 'Invalid graph data'}), 400
         
-        # 绘制原始图
-        visualization = draw_original_graph(nodes, edges)
+        # 绘制原始图（按页面传入的标签模式）
+        visualization = draw_original_graph(nodes, edges, label_mode=label_mode)
         
         return jsonify({
             'visualization': visualization,
@@ -492,6 +493,42 @@ def get_redundant_paths():
         
         return jsonify(result)
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/traffic/calculate-paths', methods=['POST'])
+def calculate_traffic_paths():
+    """计算路径和流量分配（用于交互式仿真）"""
+    try:
+        data = request.get_json()
+        nodes = data.get('nodes', [])
+        edges = data.get('edges', [])
+        source = data.get('source')
+        target = data.get('target')
+        total_flow = data.get('total_flow', 1000)
+        strategy = data.get('strategy', 'balanced')  # 'single' or 'balanced'
+        num_paths = data.get('num_paths', 3)
+        
+        if not validate_graph_data(nodes, edges):
+            return jsonify({'error': 'Invalid graph data'}), 400
+        
+        if source is None or target is None:
+            return jsonify({'error': 'Missing source or target'}), 400
+        
+        # 计算路径和流量分配
+        result = calculate_paths_with_allocation(
+            nodes, edges, source, target, total_flow,
+            strategy=strategy,
+            num_paths=num_paths
+        )
+        
+        if 'error' in result:
+            return jsonify(result), 400
+        
+        return jsonify(result)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 

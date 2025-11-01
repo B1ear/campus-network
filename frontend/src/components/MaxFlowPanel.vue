@@ -188,6 +188,8 @@
 
       <!-- 可视化对比 -->
       <div class="visualization-comparison">
+        <h3 class="section-title">📊 算法结果可视化</h3>
+        <div class="viz-cards-grid">
         <div class="viz-card">
           <h3>🔴 Edmonds-Karp 结果</h3>
           <img v-if="result.ek.visualization" :src="'data:image/png;base64,' + result.ek.visualization" 
@@ -218,8 +220,9 @@
             </div>
           </div>
         </div>
+        </div>
       </div>
-    </div
+    </div>
     
     <!-- 图片查看器 -->
     <ImageViewer 
@@ -521,7 +524,7 @@ async function refreshPreview() {
     }))
     
     // 调用原始图预览API
-    const response = await api.previewGraph(parseNodes.value, edges)
+    const response = await api.previewGraph(parseNodes.value, edges, 'capacity')
     if (response && response.visualization) {
       previewImage.value = 'data:image/png;base64,' + response.visualization
     }
@@ -791,8 +794,25 @@ h2 { color: #667eea; margin: 0 0 1rem; font-size: 1.5rem; font-weight: 600; }
 
 /* 动画与可视化布局 */
 .animation-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
-.visualization-comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
 .viz-card { background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+.viz-card h3 {
+  color: #333;
+  margin: 0 0 0.8rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  border-bottom: 3px solid;
+  padding-bottom: 0.4rem;
+}
+
+.viz-card:first-child h3 {
+  border-color: #f5576c;
+}
+
+.viz-card:last-child h3 {
+  border-color: #4facfe;
+}
+
 .viz-image { width: 100%; height: auto; border-radius: 8px; border: 2px solid #e0e0e0; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.3s ease; }
 .viz-image.clickable { cursor: zoom-in; }
 .viz-image.clickable:hover { transform: scale(1.02); box-shadow: 0 4px 16px rgba(102,126,234,0.3); border-color: #667eea; }
@@ -801,8 +821,19 @@ h2 { color: #667eea; margin: 0 0 1rem; font-size: 1.5rem; font-weight: 600; }
 .edge-item { padding: 0.5rem; background: #f5f5f5; border-radius: 6px; font-size: 0.9rem; text-align: center; border-left: 3px solid #667eea; }
 .edge-item .weight { color: #764ba2; font-weight: bold; }
 
+.visualization-comparison {
+  margin-top: 1rem;
+}
+
+.viz-cards-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
 @media (max-width: 1200px) {
-  .animation-grid, .visualization-comparison { grid-template-columns: 1fr; }
+  .animation-grid, .viz-cards-grid { grid-template-columns: 1fr; }
 }
 
 .button-group {
@@ -903,7 +934,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important;
 
 /* 动画区域 */
 .animation-section {
-  margin-bottom: 2rem;
+  margin-bottom: 0.5rem;
 }
 
 .result-info-section {

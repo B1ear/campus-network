@@ -65,13 +65,29 @@ def edmonds_karp(source, sink, capacity, adj, return_steps=False, nodes=None, ed
     fixed_layout = None  # 用于保存固定布局
     
     if return_steps:
-        from algorithms.utils import draw_maxflow_step_visualization, compute_fixed_layout
-        # 预先计算固定布局
+        from algorithms.utils import draw_maxflow_step_visualization, compute_fixed_layout, draw_maxflow_result
+        # 为可视化准备节点与边（即使调用方未提供，也做兼容）
         if nodes and edges_list:
-            fixed_layout = compute_fixed_layout(nodes, edges_list)
-            viz = draw_maxflow_step_visualization(nodes, edges_list, source, sink, None, 0, "Edmonds-Karp", fixed_layout)
+            vis_nodes = nodes
+            vis_edges = edges_list
         else:
-            viz = None
+            # 从残量图推断节点与边（初始状态下等同原始容量）
+            node_set = set([source, sink])
+            for u in adj:
+                node_set.add(u)
+                for v in adj[u]:
+                    node_set.add(v)
+            vis_nodes = [{'id': n} for n in sorted(node_set)]
+            vis_edges = []
+            for u in adj:
+                for v in adj[u]:
+                    cap_uv = capacity.get((u, v), 0)
+                    if cap_uv > 0:
+                        vis_edges.append({'from': u, 'to': v, 'capacity': cap_uv})
+        # 预先计算固定布局并绘制初始化帧
+        fixed_layout = compute_fixed_layout(vis_nodes, vis_edges)
+        history_paths = []
+        viz = draw_maxflow_step_visualization(vis_nodes, vis_edges, source, sink, None, 0, "Edmonds-Karp", fixed_layout, history_paths)
         steps.append({
             'step': 0,
             'description': f'初始化：源点 {source}, 汇点 {sink}',
@@ -115,7 +131,7 @@ def edmonds_karp(source, sink, capacity, adj, return_steps=False, nodes=None, ed
         if return_steps:
             viz = None
             if nodes and edges_list:
-                viz = draw_maxflow_step_visualization(nodes, edges_list, source, sink, path, flow, "Edmonds-Karp", fixed_layout)
+                viz = draw_maxflow_step_visualization(nodes, edges_list, source, sink, path, flow, "Edmonds-Karp", fixed_layout, history_paths)
             steps.append({
                 'step': iteration,
                 'description': f'找到增广路径，瓶颈值 {inc}',
@@ -124,6 +140,8 @@ def edmonds_karp(source, sink, capacity, adj, return_steps=False, nodes=None, ed
                 'bottleneck': inc,
                 'visualization': viz
             })
+            # 累积历史路径（用于后续帧叠加展示）
+            history_paths.append(list(path))
         
         v = sink
         while v != source:
@@ -135,12 +153,25 @@ def edmonds_karp(source, sink, capacity, adj, return_steps=False, nodes=None, ed
             v = u
     
     if return_steps:
-        viz = None
+        # 结束帧：显示最终的流量分配（所有路径综合后的结果）
         if nodes and edges_list:
-            viz = draw_maxflow_step_visualization(nodes, edges_list, source, sink, None, flow, "Edmonds-Karp", fixed_layout)
+            # 根据初始容量与当前残量计算每条边的最终流量
+            final_flow_edges = []
+            for e in edges_list:
+                u, v = e['from'], e['to']
+                cap0 = e.get('capacity', e.get('weight', 0))
+                rem = capacity.get((u, v), 0)
+                f = max(cap0 - rem, 0)
+                if f > 0:
+                    final_flow_edges.append({'from': u, 'to': v, 'flow': f})
+            from algorithms.utils import draw_maxflow_result
+            viz = draw_maxflow_result(nodes, edges_list, final_flow_edges, source, sink, flow, "Edmonds-Karp")
+        else:
+            # 回退到步骤可视化（无高亮路径）
+            viz = draw_maxflow_step_visualization(vis_nodes, vis_edges, source, sink, None, flow, "Edmonds-Karp", fixed_layout, history_paths)
         steps.append({
             'step': iteration + 1,
-            'description': f'没有更多增广路径，算法结束',
+            'description': f'没有更多增广路径，算法结束（显示最终流量分配）',
             'flow': flow,
             'path': None,
             'bottleneck': None,
@@ -182,21 +213,31 @@ class Dinic:
                     q.append(v)
         return level
 
-    def dfs_flow(self, u, t, f, level, it):
+    def dfs_flow(self, u, t, f, level, it, path=None, collect_path=False):
+        if collect_path and path is None:
+            path = []
         if u == t:
-            return f
+            return (f, list(path)) if collect_path else f
         for i in range(it[u], len(self.adj[u])):
             ei = self.adj[u][i]
             _, v, cap = self.edges[ei]
             if cap > 0 and level.get(v, -1) == level.get(u, -1) + 1:
-                pushed = self.dfs_flow(v, t, min(f, cap), level, it)
+                if collect_path:
+                    path.append((u, v))
+                pushed_res = self.dfs_flow(v, t, min(f, cap), level, it, path, collect_path)
+                if collect_path:
+                    pushed, used_path = pushed_res
+                else:
+                    pushed = pushed_res
                 if pushed > 0:
                     # subtract forward cap, add backward cap
                     self.edges[ei][2] -= pushed
                     self.edges[ei ^ 1][2] += pushed
-                    return pushed
+                    return (pushed, used_path) if collect_path else pushed
+                if collect_path and path:
+                    path.pop()
             it[u] += 1
-        return 0
+        return (0, []) if collect_path else 0
 
     def max_flow(self, s, t, return_steps=False, nodes=None, edges_list=None):
         flow = 0
@@ -227,10 +268,14 @@ class Dinic:
                 if return_steps:
                     viz = None
                     if nodes and edges_list:
-                        viz = draw_dinic_step_visualization(nodes, edges_list, s, t, level, flow, 0, "Dinic", fixed_layout)
+                        # 最终结果帧：计算每条边的最终流并绘制
+                        final_flows = self.flows_on_original_edges({(e['from'], e['to']): e.get('capacity', e.get('weight', 0)) for e in edges_list})
+                        flow_edges_list = [{'from': u, 'to': v, 'flow': f} for (u, v), f in final_flows.items() if f > 0]
+                        from algorithms.utils import draw_maxflow_result
+                        viz = draw_maxflow_result(nodes, edges_list, flow_edges_list, s, t, flow, "Dinic")
                     steps.append({
-                        'step': iteration + 1,
-                        'description': '没有更多层次图，算法结束',
+                        'step': iteration + 999,
+                        'description': '没有更多层次图，算法结束（显示最终流量分配）',
                         'flow': flow,
                         'level': level,
                         'pushed': None,
@@ -240,20 +285,66 @@ class Dinic:
             
             it = defaultdict(int)
             phase_flow = 0
+            phase_paths = []
+            # 在阶段开始时生成一帧，展示层次图
+            if return_steps and nodes and edges_list:
+                viz = draw_dinic_step_visualization(
+                    nodes, edges_list, s, t, level, flow, 0, "Dinic", fixed_layout,
+                    current_path=None, path_history=phase_paths
+                )
+                steps.append({
+                    'step': iteration + 0.1,
+                    'description': '构建层次图（BFS）',
+                    'flow': flow,
+                    'level': level,
+                    'pushed': 0,
+                    'visualization': viz
+                })
             while True:
-                pushed = self.dfs_flow(s, t, float('inf'), level, it)
+                if return_steps:
+                    pushed, aug_path = self.dfs_flow(s, t, float('inf'), level, it, path=[], collect_path=True)
+                else:
+                    pushed = self.dfs_flow(s, t, float('inf'), level, it)
                 if pushed == 0:
                     break
+                # 统计当前路径上饱和边（推完之后剩余cap为0的前向边）
+                saturated = []
+                if return_steps:
+                    for (uu, vv) in aug_path:
+                        # 找到前向边的剩余cap
+                        fcap = None
+                        for ei in self.adj[uu]:
+                            if ei % 2 == 0 and self.edges[ei][1] == vv:
+                                fcap = self.edges[ei][2]
+                                break
+                        if fcap == 0:
+                            saturated.append((uu, vv))
                 flow += pushed
                 phase_flow += pushed
+                if return_steps and nodes and edges_list:
+                    # 每次增广后输出一帧：当前路径红色，高亮历史路径淡蓝，标注瓶颈与饱和边
+                    phase_paths.append(list(aug_path) if return_steps else [])
+                    viz = draw_dinic_step_visualization(
+                        nodes, edges_list, s, t, level, flow, phase_flow, "Dinic", fixed_layout,
+                        current_path=aug_path, path_history=phase_paths, bottleneck=pushed, saturated_edges=saturated
+                    )
+                    steps.append({
+                        'step': iteration + 0.2 + len(phase_paths) * 0.01,
+                        'description': f'沿阻塞网络增广一条路径，瓶颈值 {pushed}',
+                        'flow': flow,
+                        'level': level,
+                        'pushed': pushed,
+                        'visualization': viz
+                    })
             
             iteration += 1
             if return_steps:
                 viz = None
                 if nodes and edges_list:
-                    viz = draw_dinic_step_visualization(nodes, edges_list, s, t, level, flow, phase_flow, "Dinic", fixed_layout)
+                    viz = draw_dinic_step_visualization(nodes, edges_list, s, t, level, flow, phase_flow, "Dinic", fixed_layout,
+                                                        current_path=None, path_history=phase_paths, bottleneck=None, saturated_edges=None)
                 steps.append({
-                    'step': iteration,
+                    'step': iteration + 1,
                     'description': f'完成一个阶段，本阶段增加流量 {phase_flow}',
                     'flow': flow,
                     'level': level,

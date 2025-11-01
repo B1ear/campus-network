@@ -57,13 +57,6 @@
                   <span class="strategy-text">负载均衡</span>
                 </span>
               </label>
-              <label class="strategy-option">
-                <input type="radio" v-model="simConfig.strategy" value="congestion" :disabled="isRunning" />
-                <span class="strategy-label">
-                  <span class="strategy-icon">🚦</span>
-                  <span class="strategy-text">拥塞避免</span>
-                </span>
-              </label>
             </div>
           </div>
 
@@ -296,6 +289,7 @@
 <script setup>
 import { ref, computed, inject, onMounted, onUnmounted, watch, reactive } from 'vue'
 import Toast from './Toast.vue'
+import { api } from '../api/backend.js'
 
 const globalNetwork = inject('globalNetwork')
 const hasNetwork = computed(() => globalNetwork.value !== null)
@@ -536,172 +530,105 @@ const startSimulation = async () => {
   // 计算路径
   await calculatePaths()
 
-  // 开始动画循环
-  lastTime = performance.now()
-  animationLoop()
-  
-  const strategyName = {
-    single: '单路径',
-    balanced: '负载均衡',
-    congestion: '拥塞避免'
-  }[strategy] || strategy
-  showToast(`🚀 仿真启动成功 | 策略: ${strategyName} | 路径数: ${activePaths.value.length}`, 'success')
+  // 只有在路径计算成功后才启动动画
+  if (activePaths.value.length > 0) {
+    lastTime = performance.now()
+    animationLoop()
+    
+    const strategyName = {
+      single: '单路径',
+      balanced: '负载均衡'
+    }[simConfig.value.strategy] || simConfig.value.strategy
+    showToast(`🚀 仿真启动成功 | 策略: ${strategyName} | 路径数: ${activePaths.value.length}`, 'success')
+  }
 }
 
-// 计算路径（简化版本，实际应调用后端）
+// 计算路径（调用后端负载均衡算法）
 const calculatePaths = async () => {
-  const { source, target, strategy } = simConfig.value
+  const { source, target, strategy, flowRate } = simConfig.value
 
-  // 这里简化处理，实际应调用后端API
-  // 使用BFS找到k条路径
-  const paths = findKPaths(source, target, strategy === 'single' ? 1 : 3)
-  
-  if (paths.length === 0) {
-    showToast(`❌ 路径查找失败 | 无法从节点 ${source} 到达节点 ${target}`, 'error')
-    stopSimulation()
-    return
-  }
-
-  // 计算每条路径的瓶颈容量
-  const pathCapacities = paths.map(pathNodes => {
-    let minCapacity = Infinity
-    for (let i = 0; i < pathNodes.length - 1; i++) {
-      // 查找边（无向图：正向或反向）
-      let edge = visualEdges.value.find(
-        e => e.from === pathNodes[i] && e.to === pathNodes[i + 1]
-      )
-      if (!edge) {
-        edge = visualEdges.value.find(
-          e => e.from === pathNodes[i + 1] && e.to === pathNodes[i]
-        )
-      }
-      if (edge && edge.capacity < minCapacity) {
-        minCapacity = edge.capacity
-      }
-    }
-    return minCapacity
-  })
-
-  // 计算总容量
-  const totalCapacity = pathCapacities.reduce((sum, cap) => sum + cap, 0)
-  const requestedFlow = simConfig.value.flowRate
-
-  // 检查是否超过容量
-  let actualFlowRate = requestedFlow
-  let isLimited = false
-  
-  if (requestedFlow > totalCapacity) {
-    isLimited = true
-    actualFlowRate = totalCapacity
+  try {
+    console.log('🔍 调用后端API计算路径:', {
+      source,
+      target,
+      strategy,
+      flowRate,
+      nodeCount: globalNetwork.value.nodes.length,
+      edgeCount: globalNetwork.value.edges.length
+    })
     
-    // 显示警告
-    const pathsInfo = strategy === 'single' ? '1条路径' : `${paths.length}条路径`
-    showToast(
-      `⚠️ 容量限制 | 请求: ${requestedFlow} 单位/秒 > 最大: ${totalCapacity.toFixed(0)} 单位/秒 (${pathsInfo}) | 已自动调整`,
-      'warning'
+    // 调用后端API计算路径和流量分配
+    const result = await api.calculateTrafficPaths(
+      globalNetwork.value.nodes,
+      globalNetwork.value.edges,
+      source,
+      target,
+      flowRate,
+      strategy, // 'single' or 'balanced'
+      3 // 最多查找3条路径
     )
-  }
+    
+    console.log('✅ 后端返回结果:', result)
 
-  // 按策略分配流量
-  activePaths.value = paths.map((pathNodes, idx) => {
-    const pathCapacity = pathCapacities[idx]
-    let flow
+    if (result.error) {
+      showToast(`❌ 路径计算失败 | ${result.error}`, 'error')
+      stopSimulation()
+      return
+    }
 
-    if (strategy === 'single') {
-      // 单路径：使用实际流量，但不超过路径容量
-      flow = Math.min(actualFlowRate, pathCapacity)
-    } else if (strategy === 'balanced') {
-      // 负载均衡：按容量比例分配，最大化吞吐量
-      flow = (pathCapacity / totalCapacity) * actualFlowRate
-      // 确保不超过单条路径容量
-      flow = Math.min(flow, pathCapacity)
-    } else if (strategy === 'congestion') {
-      // 拥塞避免：保守分配，限制每条路径利用率不超过65%
-      const maxUtilization = 0.65 // 目标利用率
-      const maxFlowForPath = pathCapacity * maxUtilization
-      // 按比例分配，但不超过65%利用率
-      flow = Math.min(
-        (pathCapacity / totalCapacity) * actualFlowRate,
-        maxFlowForPath
+    const { paths, path_allocations, total_capacity, actual_flow, is_limited, requested_flow } = result
+
+    if (!paths || paths.length === 0) {
+      showToast(`❌ 路径查找失败 | 无法从节点 ${source} 到达节点 ${target}`, 'error')
+      stopSimulation()
+      return
+    }
+
+    // 检查是否超过容量
+    if (is_limited) {
+      const pathsInfo = strategy === 'single' ? '1条路径' : `${paths.length}条路径`
+      showToast(
+        `⚠️ 容量限制 | 请求: ${requested_flow} 单位/秒 > 最大: ${total_capacity.toFixed(0)} 单位/秒 (${pathsInfo}) | 已自动调整`,
+        'warning'
       )
-    } else {
-      // 默认：负载均衡
-      flow = (pathCapacity / totalCapacity) * actualFlowRate
-      flow = Math.min(flow, pathCapacity)
     }
 
-    return {
-      nodes: pathNodes,
-      flow: flow,
-      capacity: pathCapacity,
-      utilization: flow / pathCapacity,
-      maxCapacity: pathCapacity
-    }
-  })
-
-  // 更新实际使用的流量速率
-  if (isLimited) {
-    // 保存原始请求值
-    simConfig.value._originalFlowRate = requestedFlow
-    // 使用实际可达流量
-    simConfig.value._actualFlowRate = actualFlowRate
-  } else {
-    simConfig.value._actualFlowRate = actualFlowRate
-  }
-
-  stats.value.activePaths = activePaths.value.length
-
-  // 标记路径上的节点为已使用
-  activePaths.value.forEach(path => {
-    path.nodes.forEach(nodeId => {
-      const node = visualNodes.value.find(n => n.id === nodeId)
-      if (node) {
-        node.isUsed = true
+    // 使用后端计算的结果
+    activePaths.value = paths.map((pathNodes, idx) => {
+      const allocation = path_allocations[idx]
+      return {
+        nodes: pathNodes,
+        flow: allocation.flow,
+        capacity: allocation.capacity,
+        utilization: allocation.utilization,
+        maxCapacity: allocation.capacity
       }
     })
-  })
-}
 
-// 简单的BFS找路径（前端模拟）
-const findKPaths = (source, target, k) => {
-  const paths = []
-  const edges = globalNetwork.value.edges
-
-  // 构建邻接表（无向图：双向添加）
-  const graph = {}
-  edges.forEach(edge => {
-    // 添加正向边
-    if (!graph[edge.from]) graph[edge.from] = []
-    graph[edge.from].push(edge.to)
-    // 添加反向边（无向图）
-    if (!graph[edge.to]) graph[edge.to] = []
-    graph[edge.to].push(edge.from)
-  })
-
-  // BFS找路径
-  const queue = [[source]]
-  const visited = new Set()
-
-  while (queue.length > 0 && paths.length < k) {
-    const path = queue.shift()
-    const node = path[path.length - 1]
-
-    if (node === target) {
-      paths.push([...path])
-      continue
+    // 更新实际使用的流量速率
+    if (is_limited) {
+      simConfig.value._originalFlowRate = requested_flow
+      simConfig.value._actualFlowRate = actual_flow
+    } else {
+      simConfig.value._actualFlowRate = actual_flow
     }
 
-    if (path.length > 10) continue // 防止路径过长
+    stats.value.activePaths = activePaths.value.length
 
-    const neighbors = graph[node] || []
-    for (const next of neighbors) {
-      if (!path.includes(next)) {
-        queue.push([...path, next])
-      }
-    }
+    // 标记路径上的节点为已使用
+    activePaths.value.forEach(path => {
+      path.nodes.forEach(nodeId => {
+        const node = visualNodes.value.find(n => n.id === nodeId)
+        if (node) {
+          node.isUsed = true
+        }
+      })
+    })
+  } catch (error) {
+    console.error('路径计算失败:', error)
+    showToast(`❌ 路径计算失败 | ${error.message}`, 'error')
+    stopSimulation()
   }
-
-  return paths.slice(0, k)
 }
 
 // 动画循环
@@ -829,15 +756,36 @@ const stopSimulation = () => {
     cancelAnimationFrame(animationId)
     animationId = null
   }
-  const transferred = stats.value.totalTransferred.toFixed(0)
-  const utilization = (stats.value.avgUtilization * 100).toFixed(1)
-  showToast(`⏹️ 仿真已停止 | 总传输: ${transferred} | 平均利用率: ${utilization}%`, 'info')
+  // 只在统计数据非零时显示停止消息
+  if (stats.value.totalTransferred > 0) {
+    const transferred = stats.value.totalTransferred.toFixed(0)
+    const utilization = (stats.value.avgUtilization * 100).toFixed(1)
+    showToast(`⏹️ 仿真已停止 | 总传输: ${transferred} | 平均利用率: ${utilization}%`, 'info')
+  }
 }
 
 // 重置仿真
 const resetSimulation = () => {
   stopSimulation()
+  
+  // 重置统计数据
+  stats.value = {
+    totalTransferred: 0,
+    avgUtilization: 0,
+    activePaths: 0,
+    congestedLinks: 0
+  }
+  
+  // 清除流量限制警告标识
+  delete simConfig.value._originalFlowRate
+  delete simConfig.value._actualFlowRate
+  
+  // 清除活跃路径
+  activePaths.value = []
+  
+  // 重新初始化可视化
   initVisualization()
+  
   showToast('🔄 仿真环境已重置，可以开始新的仿真', 'info')
 }
 

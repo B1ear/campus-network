@@ -101,10 +101,10 @@ export const api = {
   },
 
   // 预览原始图（不包含算法结果）
-  previewGraph(nodes, edges) {
+  previewGraph(nodes, edges, labelMode = 'auto') {
     return request('/graph/preview', {
       method: 'POST',
-      body: JSON.stringify({ nodes, edges }),
+      body: JSON.stringify({ nodes, edges, label_mode: labelMode }),
     })
   },
 
@@ -152,6 +152,22 @@ export const api = {
         total_flow: totalFlow,
         enable_load_balancing: enableLoadBalancing,
         enable_congestion_avoidance: enableCongestionAvoidance,
+        num_paths: numPaths,
+      }),
+    })
+  },
+
+  // 计算路径和流量分配（用于交互式仿真）
+  calculateTrafficPaths(nodes, edges, source, target, totalFlow, strategy = 'balanced', numPaths = 3) {
+    return request('/traffic/calculate-paths', {
+      method: 'POST',
+      body: JSON.stringify({
+        nodes,
+        edges,
+        source,
+        target,
+        total_flow: totalFlow,
+        strategy,
         num_paths: numPaths,
       }),
     })

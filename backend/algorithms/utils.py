@@ -92,13 +92,17 @@ def setup_chinese_font():
     matplotlib.rcParams['axes.unicode_minus'] = False
 
 
-def draw_original_graph(nodes, edges):
+def draw_original_graph(nodes, edges, label_mode='auto'):
     """
     绘制原始图（不包含算法结果）
     
     Args:
         nodes: 节点列表
         edges: 边列表
+        label_mode: 'auto' | 'cost' | 'capacity'
+            - cost: 仅显示 cost/weight
+            - capacity: 仅显示 capacity
+            - auto: 优先 capacity, 否则 cost/weight
     
     Returns:
         base64编码的PNG图片
@@ -115,7 +119,8 @@ def draw_original_graph(nodes, edges):
     
     # 添加边
     for edge in edges:
-        G.add_edge(edge['from'], edge['to'], weight=edge.get('weight', edge.get('cost', 0)))
+        G.add_edge(edge['from'], edge['to'], weight=edge.get('weight', edge.get('cost', 0)),
+                   capacity=edge.get('capacity', None))
     
     # 生成布局
     pos = nx.spring_layout(G, seed=42, k=2.5, iterations=100)
@@ -134,8 +139,15 @@ def draw_original_graph(nodes, edges):
     nx.draw_networkx_labels(G, pos, ax=ax, font_size=12, font_weight='bold',
                            font_color='white')
     
-    # 绘制边的权重标签
-    edge_labels = {(e['from'], e['to']): e.get('weight', e.get('cost', 0)) for e in edges}
+    # 边标签选择策略
+    def edge_label_for(e):
+        if label_mode == 'capacity':
+            return e.get('capacity', '')
+        if label_mode == 'cost':
+            return e.get('weight', e.get('cost', 0))
+        # auto
+        return e.get('capacity', e.get('weight', e.get('cost', 0)))
+    edge_labels = {(e['from'], e['to']): edge_label_for(e) for e in edges}
     nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, ax=ax,
                                 font_size=10, font_color='#2d3748',
                                 bbox=dict(boxstyle='round,pad=0.3', facecolor='white', 
@@ -256,16 +268,7 @@ def draw_mst_step_visualization(nodes, all_edges, mst_edges, current_edge=None,
 
 def draw_mst_result(nodes, all_edges, mst_edges, algorithm_name="MST"):
     """
-    绘制最小生成树结果
-    
-    Args:
-        nodes: 节点列表
-        all_edges: 所有边的列表
-        mst_edges: MST中的边列表
-        algorithm_name: 算法名称
-    
-    Returns:
-        base64编码的PNG图片
+    绘制最小生成树结果（风格与其他图一致）
     """
     setup_chinese_font()
     
@@ -281,40 +284,34 @@ def draw_mst_result(nodes, all_edges, mst_edges, algorithm_name="MST"):
     for edge in all_edges:
         G.add_edge(edge['from'], edge['to'], weight=edge.get('weight', 0))
     
-    # 创建MST边集
-    mst_edge_set = set()
-    for edge in mst_edges:
-        mst_edge_set.add((min(edge['from'], edge['to']), max(edge['from'], edge['to'])))
-    
     # 生成布局
     pos = nx.spring_layout(G, seed=42, k=2.5, iterations=100)
     
     # 绘图
     fig, ax = plt.subplots(figsize=(16, 12))
     
-    # 绘制所有边（浅灰色）
-    nx.draw_networkx_edges(G, pos, ax=ax, alpha=0.2, width=1, edge_color='gray')
+    # 底层所有边（与原始图一致的浅灰蓝）
+    nx.draw_networkx_edges(G, pos, ax=ax, alpha=0.25, width=1.5, edge_color='#cbd5e0')
     
-    # 绘制MST边（红色、加粗）
+    # 绘制MST边（与步骤一致的红色高亮）
     mst_edges_list = [(edge['from'], edge['to']) for edge in mst_edges]
     nx.draw_networkx_edges(G, pos, edgelist=mst_edges_list, ax=ax,
-                          edge_color='red', width=4, alpha=0.9)
+                          edge_color='#ef4444', width=4.5, alpha=0.95)
     
-    # 绘制节点
-    nx.draw_networkx_nodes(G, pos, ax=ax, node_color='lightblue', 
-                          node_size=800, alpha=0.9, edgecolors='navy', linewidths=2)
+    # 绘制节点（与原始图一致的配色）
+    nx.draw_networkx_nodes(G, pos, ax=ax, node_color='#667eea', 
+                          node_size=800, alpha=0.92, edgecolors='#4c51bf', linewidths=2.5)
     
-    # 绘制节点标签（使用白色背景框）
-    nx.draw_networkx_labels(G, pos, ax=ax, font_size=11, font_weight='bold',
-                           bbox=dict(boxstyle='round,pad=0.3', facecolor='white', 
-                                    edgecolor='none', alpha=0.85))
+    # 节点标签（白底圆角）
+    nx.draw_networkx_labels(G, pos, ax=ax, font_size=12, font_weight='bold',
+                           font_color='white')
     
-    # 绘制MST边的权重标签（使用白色背景框）
+    # MST 边权重标签（白底浅红边框）
     mst_edge_labels = {(e['from'], e['to']): e.get('weight', 0) for e in mst_edges}
     nx.draw_networkx_edge_labels(G, pos, edge_labels=mst_edge_labels, ax=ax,
-                                font_size=9, font_color='red',
+                                font_size=10, font_color='#ef4444',
                                 bbox=dict(boxstyle='round,pad=0.2', facecolor='white', 
-                                         edgecolor='lightcoral', alpha=0.85))
+                                         edgecolor='#fecaca', alpha=0.9))
     
     total_weight = sum(e.get('weight', 0) for e in mst_edges)
     plt.title(f"{algorithm_name} 结果 - 总权重: {total_weight}", 
@@ -334,19 +331,7 @@ def draw_mst_result(nodes, all_edges, mst_edges, algorithm_name="MST"):
 
 def draw_maxflow_result(nodes, edges, flow_edges, source, sink, max_flow, algorithm_name="MaxFlow"):
     """
-    绘制最大流结果
-    
-    Args:
-        nodes: 节点列表
-        edges: 所有边的列表（包含容量）
-        flow_edges: 流量分配的边列表
-        source: 源点
-        sink: 汇点
-        max_flow: 最大流值
-        algorithm_name: 算法名称
-    
-    Returns:
-        base64编码的PNG图片
+    绘制最大流结果（风格与其他图一致）
     """
     setup_chinese_font()
     
@@ -374,36 +359,36 @@ def draw_maxflow_result(nodes, edges, flow_edges, source, sink, max_flow, algori
     # 绘图
     fig, ax = plt.subplots(figsize=(16, 12))
     
-    # 绘制所有边（浅灰色）
-    nx.draw_networkx_edges(G, pos, ax=ax, alpha=0.2, width=1, edge_color='gray',
+    # 底层所有边（浅灰蓝，带箭头）
+    nx.draw_networkx_edges(G, pos, ax=ax, alpha=0.25, width=1.5, edge_color='#cbd5e0',
                           arrows=True, arrowsize=15, arrowstyle='->', 
                           connectionstyle='arc3,rad=0.1')
     
-    # 绘制有流量的边（蓝色、粗细根据流量）
+    # 绘制有流量的边（主题蓝，粗细按流量）
     flow_edges_list = [(e['from'], e['to']) for e in flow_edges if e['flow'] > 0]
     if flow_edges_list:
         max_flow_value = max(e['flow'] for e in flow_edges if e['flow'] > 0)
         widths = [4 * (flow_dict.get((e[0], e[1]), 0) / max_flow_value) + 2 
                  for e in flow_edges_list]
         nx.draw_networkx_edges(G, pos, edgelist=flow_edges_list, ax=ax,
-                              edge_color='blue', width=widths, alpha=0.9,
+                              edge_color='#3b82f6', width=widths, alpha=0.95,
                               arrows=True, arrowsize=25, arrowstyle='->',
                               connectionstyle='arc3,rad=0.1')
     
-    # 绘制节点
+    # 绘制节点（源绿色、汇红色、其余与原始图一致）
     node_colors = []
     for node in G.nodes():
         if node == source:
-            node_colors.append('lightgreen')
+            node_colors.append('#10b981')
         elif node == sink:
-            node_colors.append('lightcoral')
+            node_colors.append('#ef4444')
         else:
-            node_colors.append('lightblue')
+            node_colors.append('#667eea')
     
     nx.draw_networkx_nodes(G, pos, ax=ax, node_color=node_colors, 
-                          node_size=900, alpha=0.9, edgecolors='navy', linewidths=2)
+                          node_size=900, alpha=0.92, edgecolors='#1f2937', linewidths=2.5)
     
-    # 绘制节点标签（使用白色背景框）
+    # 绘制节点标签（与步骤一致）
     labels = {}
     for node in G.nodes():
         if node == source:
@@ -412,17 +397,17 @@ def draw_maxflow_result(nodes, edges, flow_edges, source, sink, max_flow, algori
             labels[node] = f"{node}\n(汇)"
         else:
             labels[node] = str(node)
-    nx.draw_networkx_labels(G, pos, labels=labels, ax=ax, font_size=10, font_weight='bold',
-                           bbox=dict(boxstyle='round,pad=0.3', facecolor='white', 
-                                    edgecolor='none', alpha=0.85))
+    nx.draw_networkx_labels(G, pos, labels=labels, ax=ax, font_size=11, font_weight='bold',
+                           font_color='white')
     
-    # 绘制流量标签（使用白色背景框）
+    # 绘制流量标签（白底浅蓝边框）
     flow_labels = {(e['from'], e['to']): f"{e['flow']}" 
                   for e in flow_edges if e['flow'] > 0}
-    nx.draw_networkx_edge_labels(G, pos, edge_labels=flow_labels, ax=ax,
-                                font_size=9, font_color='blue',
-                                bbox=dict(boxstyle='round,pad=0.2', facecolor='white', 
-                                         edgecolor='lightblue', alpha=0.85))
+    if flow_labels:
+        nx.draw_networkx_edge_labels(G, pos, edge_labels=flow_labels, ax=ax,
+                                    font_size=9, font_color='#1f2937',
+                                    bbox=dict(boxstyle='round,pad=0.2', facecolor='white', 
+                                             edgecolor='#bfdbfe', alpha=0.9))
     
     plt.title(f"{algorithm_name} 结果 - 最大流: {max_flow}", 
              fontsize=16, fontweight='bold', pad=20)
@@ -656,7 +641,7 @@ def draw_traffic_load_balancing(nodes, edges, paths, edge_flows, source, target,
 
 
 def draw_maxflow_step_visualization(nodes, edges, source, sink, current_path=None, 
-                                   current_flow=0, algorithm_name="MaxFlow", fixed_layout=None):
+                                   current_flow=0, algorithm_name="MaxFlow", fixed_layout=None, history_paths=None):
     """
     绘制最大流算法某一步的可视化图
     
@@ -700,6 +685,18 @@ def draw_maxflow_step_visualization(nodes, edges, source, sink, current_path=Non
     nx.draw_networkx_edges(G, pos, ax=ax, alpha=0.2, width=1.5, edge_color='#cbd5e0',
                           arrows=True, arrowsize=15, arrowstyle='->', 
                           connectionstyle='arc3,rad=0.1')
+    
+    # 叠加历史增广路径（淡蓝色）
+    if history_paths:
+        hist_edges = []
+        for p in history_paths:
+            if p:
+                hist_edges.extend([(u, v) for (u, v) in p])
+        if hist_edges:
+            nx.draw_networkx_edges(G, pos, edgelist=hist_edges, ax=ax,
+                                  edge_color='#93c5fd', width=3, alpha=0.45,
+                                  arrows=True, arrowsize=22, arrowstyle='->',
+                                  connectionstyle='arc3,rad=0.1')
     
     # 绘制当前增广路径（红色、加粗）
     if current_path:
@@ -751,9 +748,9 @@ def draw_maxflow_step_visualization(nodes, edges, source, sink, current_path=Non
     ax.axis('off')
     plt.tight_layout()
     
-    # 转换为base64
+    # 转换为base64（避免首帧裁剪过度，统一白色底）
     buffer = io.BytesIO()
-    plt.savefig(buffer, format='png', bbox_inches='tight', dpi=120)
+    plt.savefig(buffer, format='png', dpi=120, facecolor='white', pad_inches=0.1)
     buffer.seek(0)
     image_base64 = base64.b64encode(buffer.read()).decode('utf-8')
     plt.close()
@@ -790,7 +787,8 @@ def compute_fixed_layout(nodes, edges):
 
 
 def draw_dinic_step_visualization(nodes, edges, source, sink, level_graph=None, 
-                                  current_flow=0, phase_flow=0, algorithm_name="Dinic", fixed_layout=None):
+                                  current_flow=0, phase_flow=0, algorithm_name="Dinic", fixed_layout=None,
+                                  current_path=None, path_history=None, bottleneck=None, saturated_edges=None):
     """
     绘制Dinic算法某一步的可视化图，展示层次图
     
@@ -836,6 +834,18 @@ def draw_dinic_step_visualization(nodes, edges, source, sink, level_graph=None,
                           arrows=True, arrowsize=15, arrowstyle='->', 
                           connectionstyle='arc3,rad=0.1')
     
+    # 叠加历史增广路径（淡蓝色）
+    if path_history:
+        hist_edges = []
+        for p in path_history:
+            if p:
+                hist_edges.extend([(u, v) for (u, v) in p])
+        if hist_edges:
+            nx.draw_networkx_edges(G, pos, edgelist=hist_edges, ax=ax,
+                                  edge_color='#93c5fd', width=3, alpha=0.45,
+                                  arrows=True, arrowsize=22, arrowstyle='->',
+                                  connectionstyle='arc3,rad=0.1')
+
     # 如果有层次图，高亮层次图中的边
     if level_graph:
         level_edges = []
@@ -892,6 +902,20 @@ def draw_dinic_step_visualization(nodes, edges, source, sink, level_graph=None,
                               node_size=node_sizes, alpha=0.9, 
                               edgecolors='#1f2937', linewidths=2.5)
     
+    # 当前增广路径（红色高亮）
+    if current_path:
+        nx.draw_networkx_edges(G, pos, edgelist=current_path, ax=ax,
+                              edge_color='#ef4444', width=5, alpha=0.95,
+                              arrows=True, arrowsize=28, arrowstyle='->',
+                              connectionstyle='arc3,rad=0.1')
+
+    # 饱和边（橙色高亮）
+    if saturated_edges:
+        nx.draw_networkx_edges(G, pos, edgelist=saturated_edges, ax=ax,
+                              edge_color='#f59e0b', width=6, alpha=0.9,
+                              arrows=True, arrowsize=28, arrowstyle='->',
+                              connectionstyle='arc3,rad=0.1')
+
     # 绘制节点标签（包含层次信息）
     labels = {}
     for node in G.nodes():
@@ -924,7 +948,8 @@ def draw_dinic_step_visualization(nodes, edges, source, sink, level_graph=None,
         title += f" - 当前流量: {current_flow} (本阶段+{phase_flow})"
     else:
         title += f" - 当前流量: {current_flow}"
-    
+    if bottleneck is not None:
+        title += f" | 瓶颈: {bottleneck}"
     if level_graph:
         max_level = max(level_graph.values()) if level_graph.values() else 0
         title += f" | 层次图深度: {max_level}"

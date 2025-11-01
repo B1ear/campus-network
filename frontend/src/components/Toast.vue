@@ -8,7 +8,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
 
 const props = defineProps({
   message: String,
@@ -35,7 +35,8 @@ const icons = {
   info: 'ℹ️'
 }
 
-const icon = props.type in icons ? icons[props.type] : icons.info
+// 使用 computed 使图标响应式更新
+const icon = computed(() => props.type in icons ? icons[props.type] : icons.info)
 
 watch(() => props.show, (newVal) => {
   if (newVal) {

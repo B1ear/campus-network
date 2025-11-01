@@ -168,6 +168,8 @@
       
       <!-- 可视化对比 -->
       <div class="visualization-comparison">
+        <h3 class="section-title">📊 算法结果可视化</h3>
+        <div class="viz-cards-grid">
         <div class="viz-card">
           <h3>🔴 Kruskal 算法结果</h3>
           <img :src="'data:image/png;base64,' + result.kruskal.visualization" 
@@ -200,6 +202,7 @@
               </div>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </div>
@@ -464,7 +467,7 @@ async function refreshPreview() {
     }))
     
     // 调用原始图预览API
-    const response = await api.previewGraph(parseNodes.value, edges)
+    const response = await api.previewGraph(parseNodes.value, edges, 'cost')
     if (response && response.visualization) {
       previewImage.value = 'data:image/png;base64,' + response.visualization
     }
@@ -1042,13 +1045,17 @@ h2 {
   color: #065f46;
 }
 
-/* 可视化对比 */
+/* 可视化对比区域 */
 .visualization-comparison {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2rem;
+  margin-top: 1rem;
 }
 
+.viz-cards-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
 .viz-card {
   background: white;
   border-radius: 12px;
@@ -1126,7 +1133,7 @@ h2 {
 
 /* 动画区域 */
 .animation-section {
-  margin-bottom: 2rem;
+  margin-bottom: 0.5rem;
 }
 
 .section-title {
@@ -1157,7 +1164,7 @@ h2 {
     grid-template-columns: 1fr;
   }
   
-  .visualization-comparison {
+  .viz-cards-grid {
     grid-template-columns: 1fr;
   }
   
