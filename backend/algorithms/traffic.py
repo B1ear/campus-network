@@ -1,373 +1,163 @@
 """
-流量监控和负载均衡算法模块
-包括：
-1. 实时流量监控和统计
-2. 多路径负载均衡（基于容量和权重）
-3. 拥塞避免算法
-4. 流量分配优化
+简化后的流量路径与分配模块（仅保留前端实际使用的功能）
 """
 
 import networkx as nx
-from collections import defaultdict, deque
-import heapq
-import copy
-
-
-class TrafficMonitor:
-    """流量监控器"""
-    
-    def __init__(self, nodes, edges):
-        """
-        初始化流量监控器
-        Args:
-            nodes: 节点列表
-            edges: 边列表（包含capacity信息）
-        """
-        self.nodes = nodes
-        self.edges = edges
-        self.G = self._build_graph()
-        self.traffic_data = defaultdict(lambda: {'current': 0, 'capacity': 0, 'utilization': 0.0})
-        self._initialize_traffic()
-    
-    def _build_graph(self):
-        """构建有向图（对于无向边，双向添加）"""
-        G = nx.DiGraph()
-        for node in self.nodes:
-            G.add_node(node['id'])
-        for edge in self.edges:
-            G.add_edge(edge['from'], edge['to'], 
-                      weight=edge.get('weight', 0),
-                      capacity=edge.get('capacity', 1000))
-            # 添加反向边（支持无向图）
-            G.add_edge(edge['to'], edge['from'], 
-                      weight=edge.get('weight', 0),
-                      capacity=edge.get('capacity', 1000))
-        return G
-    
-    def _initialize_traffic(self):
-        """初始化流量数据"""
-        for edge in self.edges:
-            u, v = edge['from'], edge['to']
-            capacity = edge.get('capacity', 1000)
-            self.traffic_data[(u, v)] = {
-                'current': 0,
-                'capacity': capacity,
-                'utilization': 0.0
-            }
-    
-    def update_traffic(self, edge_flows):
-        """
-        更新流量数据
-        Args:
-            edge_flows: dict {(u,v): flow_value}
-        """
-        for (u, v), flow in edge_flows.items():
-            if (u, v) in self.traffic_data:
-                capacity = self.traffic_data[(u, v)]['capacity']
-                self.traffic_data[(u, v)]['current'] = flow
-                self.traffic_data[(u, v)]['utilization'] = flow / capacity if capacity > 0 else 0
-    
-    def get_congested_links(self, threshold=0.8):
-        """
-        获取拥塞链路（利用率超过阈值）
-        Args:
-            threshold: 拥塞阈值（0-1之间）
-        Returns:
-            list: 拥塞链路列表
-        """
-        congested = []
-        for (u, v), data in self.traffic_data.items():
-            if data['utilization'] >= threshold:
-                congested.append({
-                    'from': u,
-                    'to': v,
-                    'utilization': data['utilization'],
-                    'current': data['current'],
-                    'capacity': data['capacity']
-                })
-        return congested
-    
-    def get_traffic_statistics(self):
-        """
-        获取流量统计信息
-        Returns:
-            dict: 统计信息
-        """
-        if not self.traffic_data:
-            return {
-                'total_traffic': 0,
-                'total_capacity': 0,
-                'average_utilization': 0,
-                'max_utilization': 0,
-                'num_congested': 0
-            }
-        
-        utilizations = [data['utilization'] for data in self.traffic_data.values()]
-        total_traffic = sum(data['current'] for data in self.traffic_data.values())
-        total_capacity = sum(data['capacity'] for data in self.traffic_data.values())
-        
-        return {
-            'total_traffic': total_traffic,
-            'total_capacity': total_capacity,
-            'average_utilization': sum(utilizations) / len(utilizations),
-            'max_utilization': max(utilizations) if utilizations else 0,
-            'num_congested': len(self.get_congested_links(0.8)),
-            'num_links': len(self.traffic_data)
-        }
 
 
 class LoadBalancer:
-    """多路径负载均衡器"""
-    
+    """多路径负载均衡器（用于路径计算）"""
+
     def __init__(self, nodes, edges):
-        """
-        初始化负载均衡器
-        Args:
-            nodes: 节点列表
-            edges: 边列表
-        """
         self.nodes = nodes
         self.edges = edges
         self.G = self._build_graph()
-    
+
     def _build_graph(self):
-        """构建带权重的有向图（对于无向边，双向添加）"""
+        """构建带权重与容量的有向图（无向边双向添加）"""
         G = nx.DiGraph()
         for node in self.nodes:
             G.add_node(node['id'])
         for edge in self.edges:
-            # 添加正向边
-            G.add_edge(edge['from'], edge['to'],
-                      weight=edge.get('weight', 1),
-                      capacity=edge.get('capacity', 1000),
-                      cost=edge.get('cost', edge.get('weight', 1)))
-            # 添加反向边（支持无向图）
-            G.add_edge(edge['to'], edge['from'],
-                      weight=edge.get('weight', 1),
-                      capacity=edge.get('capacity', 1000),
-                      cost=edge.get('cost', edge.get('weight', 1)))
+            # 正向与反向边（便于无向拓扑）
+            for u, v in [(edge['from'], edge['to']), (edge['to'], edge['from'])]:
+                G.add_edge(
+                    u,
+                    v,
+                    weight=edge.get('weight', 1),
+                    capacity=edge.get('capacity', 1000),
+                    cost=edge.get('cost', edge.get('weight', 1)),
+                )
         return G
-    
+
     def find_k_shortest_paths(self, source, target, k=3):
-        """
-        寻找k条最短路径（用于负载均衡）
-        使用混合策略：边不相交 + 边权重增加
-        Args:
-            source: 源节点
-            target: 目标节点
-            k: 路径数量
-        Returns:
-            list: 路径列表
-        """
+        """基于加惩罚的多条最短路径搜索"""
         try:
             paths = []
-            
-            # 先找最短路径
+            # 第一条最短路径
             try:
                 shortest = nx.shortest_path(self.G, source, target, weight='weight')
                 paths.append(shortest)
             except nx.NetworkXNoPath:
                 return []
-            
-            # 策略 1: 边不相交的路径
+
+            # 策略1：避免已用边（边不相交）
             used_edges = set()
             for path in paths:
                 for i in range(len(path) - 1):
-                    used_edges.add((path[i], path[i+1]))
-            
-            for attempt in range(1, k):
+                    used_edges.add((path[i], path[i + 1]))
+
+            for _ in range(1, k):
                 G_temp = self.G.copy()
-                
-                # 移除所有已使用的边
                 for u, v in used_edges:
                     if G_temp.has_edge(u, v):
                         G_temp.remove_edge(u, v)
-                
                 try:
                     path = nx.shortest_path(G_temp, source, target, weight='weight')
                     if path not in paths:
                         paths.append(path)
-                        # 将新路径的边加入已使用集合
                         for i in range(len(path) - 1):
-                            used_edges.add((path[i], path[i+1]))
-                        
+                            used_edges.add((path[i], path[i + 1]))
                         if len(paths) >= k:
                             break
                 except nx.NetworkXNoPath:
                     break
-            
-            # 策略 2: 如果还需要更多路径，使用边权重增加方法
+
+            # 策略2：对已使用边增加权重惩罚
             if len(paths) < k:
-                # 使用权重增加策略：将已使用的边权重增加，而不是删除
                 edge_penalty = {}
                 for path in paths:
                     for i in range(len(path) - 1):
-                        edge = (path[i], path[i+1])
-                        edge_penalty[edge] = edge_penalty.get(edge, 0) + 1
-                
-                for attempt in range(len(paths), k):
+                        e = (path[i], path[i + 1])
+                        edge_penalty[e] = edge_penalty.get(e, 0) + 1
+
+                for _ in range(len(paths), k):
                     G_temp = self.G.copy()
-                    
-                    # 增加已使用边的权重
                     for (u, v), penalty in edge_penalty.items():
                         if G_temp.has_edge(u, v):
-                            original_weight = G_temp[u][v]['weight']
-                            G_temp[u][v]['weight'] = original_weight * (1 + penalty * 10)
-                    
+                            original = G_temp[u][v]['weight']
+                            G_temp[u][v]['weight'] = original * (1 + penalty * 10)
                     try:
                         path = nx.shortest_path(G_temp, source, target, weight='weight')
                         if path not in paths:
                             paths.append(path)
-                            # 更新边的惩罚
                             for i in range(len(path) - 1):
-                                edge = (path[i], path[i+1])
-                                edge_penalty[edge] = edge_penalty.get(edge, 0) + 1
+                                e = (path[i], path[i + 1])
+                                edge_penalty[e] = edge_penalty.get(e, 0) + 1
                     except nx.NetworkXNoPath:
                         break
-            
+
             return paths
-        except Exception as e:
+        except Exception:
             import traceback
             traceback.print_exc()
             return []
-    
-    def allocate_flow_equal(self, source, target, total_flow, k=3):
-        """
-        等分流量到k条路径
-        Args:
-            source: 源节点
-            target: 目标节点
-            total_flow: 总流量
-            k: 路径数量
-        Returns:
-            dict: 流量分配结果
-        """
-        paths = self.find_k_shortest_paths(source, target, k)
-        
-        if not paths:
-            return {'error': 'No path found', 'paths': [], 'edge_flows': {}}
-        
-        # 等分流量
-        flow_per_path = total_flow / len(paths)
-        edge_flows = defaultdict(float)
-        
-        for path in paths:
-            for i in range(len(path) - 1):
-                u, v = path[i], path[i+1]
-                edge_flows[(u, v)] += flow_per_path
-        
-        return {
-            'paths': paths,
-            'flow_per_path': flow_per_path,
-            'edge_flows': dict(edge_flows),
-            'num_paths': len(paths)
-        }
-    
-    def allocate_flow_weighted(self, source, target, total_flow, k=3):
-        """
-        按容量权重分配流量到k条路径
-        Args:
-            source: 源节点
-            target: 目标节点
-            total_flow: 总流量
-            k: 路径数量
-        Returns:
-            dict: 流量分配结果
-        """
-        paths = self.find_k_shortest_paths(source, target, k)
-        
-        if not paths:
-            return {'error': 'No path found', 'paths': [], 'edge_flows': {}}
-        
-        # 计算每条路径的瓶颈容量
-        path_capacities = []
-        for path in paths:
-            min_capacity = float('inf')
-            for i in range(len(path) - 1):
-                u, v = path[i], path[i+1]
-                capacity = self.G[u][v].get('capacity', 1000)
-                min_capacity = min(min_capacity, capacity)
-            path_capacities.append(min_capacity)
-        
-        # 按容量加权分配流量
-        total_capacity = sum(path_capacities)
-        if total_capacity == 0:
-            # 如果容量为0，回退到等分
-            return self.allocate_flow_equal(source, target, total_flow, k)
-        
-        edge_flows = defaultdict(float)
-        path_flows = []
-        
-        for path, capacity in zip(paths, path_capacities):
-            flow = total_flow * (capacity / total_capacity)
-            path_flows.append(flow)
-            for i in range(len(path) - 1):
-                u, v = path[i], path[i+1]
-                edge_flows[(u, v)] += flow
-        
-        return {
-            'paths': paths,
-            'path_flows': path_flows,
-            'path_capacities': path_capacities,
-            'edge_flows': dict(edge_flows),
-            'num_paths': len(paths)
-        }
-    
-    def optimize_with_congestion_avoidance(self, source, target, total_flow, current_traffic, k=3):
-        """
-        基于拥塞避免的流量优化分配
-        Args:
-            source: 源节点
-            target: 目标节点
-            total_flow: 总流量
-            current_traffic: 当前流量状态 {(u,v): {'current': x, 'capacity': y}}
-            k: 路径数量
-        Returns:
-            dict: 优化后的流量分配
-        """
-        paths = self.find_k_shortest_paths(source, target, k)
-        
-        if not paths:
-            return {'error': 'No path found', 'paths': [], 'edge_flows': {}}
-        
-        # 计算每条路径的可用容量（考虑当前流量）
-        path_available_capacities = []
-        for path in paths:
-            min_available = float('inf')
-            for i in range(len(path) - 1):
-                u, v = path[i], path[i+1]
-                capacity = self.G[u][v].get('capacity', 1000)
-                current = current_traffic.get((u, v), {}).get('current', 0)
-                available = capacity - current
-                min_available = min(min_available, available)
-            path_available_capacities.append(max(0, min_available))
-        
-        # 按可用容量分配流量
-        total_available = sum(path_available_capacities)
-        if total_available == 0:
-            return {'error': 'No available capacity', 'paths': paths, 'edge_flows': {}}
-        
-        edge_flows = defaultdict(float)
-        path_flows = []
-        
-        for path, available in zip(paths, path_available_capacities):
-            if total_available > 0:
-                flow = min(total_flow * (available / total_available), available)
-            else:
-                flow = 0
-            path_flows.append(flow)
-            for i in range(len(path) - 1):
-                u, v = path[i], path[i+1]
-                edge_flows[(u, v)] += flow
-        
-        return {
-            'paths': paths,
-            'path_flows': path_flows,
-            'path_available_capacities': path_available_capacities,
-            'edge_flows': dict(edge_flows),
-            'num_paths': len(paths),
-            'total_allocated': sum(path_flows)
-        }
+
+
+def calculate_paths_with_allocation(
+    nodes,
+    edges,
+    source,
+    target,
+    total_flow,
+    strategy='balanced',
+    num_paths=3,
+):
+    """
+    计算路径和流量分配（供 /api/traffic/calculate-paths 使用）
+    """
+    balancer = LoadBalancer(nodes, edges)
+
+    # 根据策略确定路径数量
+    k = 1 if strategy == 'single' else num_paths
+
+    # 查找 k 条路径
+    paths = balancer.find_k_shortest_paths(source, target, k)
+    if not paths:
+        return {'error': 'No path found', 'paths': [], 'path_allocations': []}
+
+    # 计算每条路径的瓶颈容量
+    path_capacities = []
+    for path in paths:
+        min_capacity = float('inf')
+        for i in range(len(path) - 1):
+            u, v = path[i], path[i + 1]
+            capacity = balancer.G[u][v].get('capacity', 1000)
+            min_capacity = min(min_capacity, capacity)
+        path_capacities.append(min_capacity)
+
+    total_capacity = sum(path_capacities)
+    actual_flow = min(total_flow, total_capacity)
+    is_limited = actual_flow < total_flow
+
+    # 分配流量
+    path_allocations = []
+    if strategy == 'single':
+        flow = min(actual_flow, path_capacities[0])
+        path_allocations.append({
+            'flow': flow,
+            'capacity': path_capacities[0],
+            'utilization': flow / path_capacities[0] if path_capacities[0] > 0 else 0,
+        })
+    else:
+        for capacity in path_capacities:
+            flow = (capacity / total_capacity) * actual_flow if total_capacity > 0 else 0
+            flow = min(flow, capacity)
+            path_allocations.append({
+                'flow': flow,
+                'capacity': capacity,
+                'utilization': flow / capacity if capacity > 0 else 0,
+            })
+
+    return {
+        'paths': paths,
+        'path_allocations': path_allocations,
+        'total_capacity': total_capacity,
+        'requested_flow': total_flow,
+        'actual_flow': actual_flow,
+        'is_limited': is_limited,
+        'num_paths': len(paths),
+    }
 
 
 class CongestionController:

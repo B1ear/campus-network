@@ -6,15 +6,13 @@ import base64
 os.environ.setdefault("MPLBACKEND", "Agg")
 import matplotlib
 matplotlib.use("Agg")
-from algorithms.mst import kruskal_mst, prim_mst, parse_input
+from algorithms.mst import kruskal_mst, prim_mst
 from algorithms.maxflow import main as maxflow_main
 from algorithms.aes_encrypt import AES128
 from algorithms.utils import validate_graph_data, save_plot, draw_mst_result, draw_maxflow_result, draw_original_graph
 from algorithms.generate_graph import generate_random_planar_network, draw_campus_network
 from config.network_config import NetworkConfig, DEFAULT_CONFIG
-from algorithms.robustness import RobustnessAnalyzer, analyze_network_robustness
-from algorithms.traffic import simulate_traffic_load_balancing, calculate_paths_with_allocation
-from algorithms.utils import draw_robustness_result, draw_traffic_load_balancing
+from algorithms.traffic import calculate_paths_with_allocation
 
 app = Flask(__name__)
 CORS(app)  # 允许跨域请求
@@ -25,10 +23,6 @@ os.makedirs(PLOT_FOLDER, exist_ok=True)
 app.config['PLOT_FOLDER'] = PLOT_FOLDER
 
 
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    """健康检查"""
-    return jsonify({'status': 'ok', 'message': 'Backend is running'})
 
 
 @app.route('/api/mst/compare', methods=['POST'])
@@ -100,37 +94,6 @@ def compare_mst():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/mst/kruskal', methods=['POST'])
-def calculate_kruskal():
-    """计算最小生成树 - Kruskal算法（保留兼容）"""
-    try:
-        data = request.get_json()
-        nodes = data.get('nodes', [])
-        edges = data.get('edges', [])
-        
-        if not validate_graph_data(nodes, edges):
-            return jsonify({'error': 'Invalid graph data'}), 400
-        
-        # 转换为原有格式 [(u, v, w), ...]
-        n = len(nodes) if nodes else max(max(e['from'], e['to']) for e in edges)
-        edge_list = [(e['from'], e['to'], e['weight']) for e in edges]
-        
-        mst_edges, total_weight = kruskal_mst(n, edge_list)
-        
-        # 转换回前端格式
-        mst_result = [{'from': u, 'to': v, 'weight': w} for u, v, w in mst_edges]
-        
-        # 生成可视化图片
-        visualization = draw_mst_result(nodes, edges, mst_result, "Kruskal")
-        
-        return jsonify({
-            'algorithm': 'Kruskal',
-            'mst_edges': mst_result,
-            'total_weight': total_weight,
-            'visualization': visualization
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/graph/preview', methods=['POST'])
@@ -157,37 +120,6 @@ def preview_graph():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/mst/prim', methods=['POST'])
-def calculate_prim():
-    """计算最小生成树 - Prim算法"""
-    try:
-        data = request.get_json()
-        nodes = data.get('nodes', [])
-        edges = data.get('edges', [])
-        
-        if not validate_graph_data(nodes, edges):
-            return jsonify({'error': 'Invalid graph data'}), 400
-        
-        # 转换为原有格式
-        n = len(nodes) if nodes else max(max(e['from'], e['to']) for e in edges)
-        edge_list = [(e['from'], e['to'], e['weight']) for e in edges]
-        
-        mst_edges, total_weight = prim_mst(n, edge_list)
-        
-        # 转换回前端格式
-        mst_result = [{'from': u, 'to': v, 'weight': w} for u, v, w in mst_edges]
-        
-        # 生成可视化图片
-        visualization = draw_mst_result(nodes, edges, mst_result, "Prim")
-        
-        return jsonify({
-            'algorithm': 'Prim',
-            'mst_edges': mst_result,
-            'total_weight': total_weight,
-            'visualization': visualization
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/maxflow/edmonds-karp', methods=['POST'])
@@ -396,104 +328,12 @@ def generate_network():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/robustness/analyze', methods=['POST'])
-def analyze_robustness():
-    """分析网络鲁棒性"""
-    try:
-        data = request.get_json()
-        nodes = data.get('nodes', [])
-        edges = data.get('edges', [])
-        
-        if not validate_graph_data(nodes, edges):
-            return jsonify({'error': 'Invalid graph data'}), 400
-        
-        # 执行鲁棒性分析
-        result = analyze_network_robustness(nodes, edges)
-        
-        # 生成可视化
-        visualization = draw_robustness_result(
-            nodes, edges, 
-            result['bridges'], 
-            result['articulation_points']
-        )
-        
-        return jsonify({
-            **result,
-            'visualization': visualization
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/robustness/simulate-edge-removal', methods=['POST'])
-def simulate_edge_removal():
-    """模拟边移除"""
-    try:
-        data = request.get_json()
-        nodes = data.get('nodes', [])
-        edges = data.get('edges', [])
-        edge_from = data.get('edge_from')
-        edge_to = data.get('edge_to')
-        
-        if not validate_graph_data(nodes, edges):
-            return jsonify({'error': 'Invalid graph data'}), 400
-        
-        if edge_from is None or edge_to is None:
-            return jsonify({'error': 'Missing edge_from or edge_to'}), 400
-        
-        analyzer = RobustnessAnalyzer(nodes, edges)
-        result = analyzer.simulate_edge_removal(edge_from, edge_to)
-        
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/robustness/simulate-node-removal', methods=['POST'])
-def simulate_node_removal():
-    """模拟节点移除"""
-    try:
-        data = request.get_json()
-        nodes = data.get('nodes', [])
-        edges = data.get('edges', [])
-        node_id = data.get('node_id')
-        
-        if not validate_graph_data(nodes, edges):
-            return jsonify({'error': 'Invalid graph data'}), 400
-        
-        if node_id is None:
-            return jsonify({'error': 'Missing node_id'}), 400
-        
-        analyzer = RobustnessAnalyzer(nodes, edges)
-        result = analyzer.simulate_node_removal(node_id)
-        
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/robustness/redundant-paths', methods=['POST'])
-def get_redundant_paths():
-    """获取冗余路径"""
-    try:
-        data = request.get_json()
-        nodes = data.get('nodes', [])
-        edges = data.get('edges', [])
-        source = data.get('source')
-        target = data.get('target')
-        
-        if not validate_graph_data(nodes, edges):
-            return jsonify({'error': 'Invalid graph data'}), 400
-        
-        if source is None or target is None:
-            return jsonify({'error': 'Missing source or target'}), 400
-        
-        analyzer = RobustnessAnalyzer(nodes, edges)
-        result = analyzer.get_redundant_paths(source, target)
-        
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/traffic/calculate-paths', methods=['POST'])
@@ -532,59 +372,6 @@ def calculate_traffic_paths():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/traffic/simulate-load-balancing', methods=['POST'])
-def simulate_load_balancing():
-    """模拟流量负载均衡"""
-    try:
-        data = request.get_json()
-        nodes = data.get('nodes', [])
-        edges = data.get('edges', [])
-        source = data.get('source')
-        target = data.get('target')
-        total_flow = data.get('total_flow', 1000)
-        enable_load_balancing = data.get('enable_load_balancing', True)
-        enable_congestion_avoidance = data.get('enable_congestion_avoidance', True)
-        num_paths = data.get('num_paths', 3)
-        
-        if not validate_graph_data(nodes, edges):
-            return jsonify({'error': 'Invalid graph data'}), 400
-        
-        if source is None or target is None:
-            return jsonify({'error': 'Missing source or target'}), 400
-        
-        # 执行负载均衡模拟
-        result = simulate_traffic_load_balancing(
-            nodes, edges, source, target, total_flow,
-            enable_load_balancing=enable_load_balancing,
-            enable_congestion_avoidance=enable_congestion_avoidance,
-            num_paths=num_paths
-        )
-        
-        if 'error' in result:
-            return jsonify(result), 400
-        
-        # 生成可视化
-        # 使用保留的元组格式edge_flows
-        edge_flows_tuple = result.get('edge_flows_tuple', {})
-        paths = result.get('paths', [])
-        
-        visualization = draw_traffic_load_balancing(
-            nodes, edges, paths, edge_flows_tuple, source, target,
-            strategy_name=result.get('strategy', '负载均衡')
-        )
-        
-        # 从结果中移除内部使用的edge_flows_tuple
-        if 'edge_flows_tuple' in result:
-            del result['edge_flows_tuple']
-        
-        return jsonify({
-            **result,
-            'visualization': visualization
-        })
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
