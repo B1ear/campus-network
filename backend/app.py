@@ -409,17 +409,28 @@ def calculate_traffic_paths():
         strategy = data.get('strategy', 'balanced')  # 'single' or 'balanced'
         num_paths = data.get('num_paths', 3)
         
+        # 获取当前边使用情况（由前端传入，用于多次调用时累积）
+        edge_usage_list = data.get('edge_usage', [])  # 格式: [{'from': u, 'to': v, 'flow': f}, ...]
+        edge_usage = {}
+        for item in edge_usage_list:
+            u, v = item['from'], item['to']
+            flow = item.get('flow', 0)
+            # 无向图，需要同时记录两个方向
+            edge_usage[(u, v)] = flow
+            edge_usage[(v, u)] = flow
+        
         if not validate_graph_data(nodes, edges):
             return jsonify({'error': 'Invalid graph data'}), 400
         
         if source is None or target is None:
             return jsonify({'error': 'Missing source or target'}), 400
         
-        # 计算路径和流量分配
+        # 计算路径和流量分配（传入edge_usage）
         result = calculate_paths_with_allocation(
             nodes, edges, source, target, total_flow,
             strategy=strategy,
-            num_paths=num_paths
+            num_paths=num_paths,
+            edge_usage=edge_usage
         )
         
         if 'error' in result:

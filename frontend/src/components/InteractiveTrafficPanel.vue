@@ -318,6 +318,7 @@ const visualEdges = ref([])
 const nodePositions = ref({})
 const activePaths = ref([])
 const canvasSize = ref({ width: 1200, height: 700 })
+const edgeUsageMap = ref({}) // 跟踪边的当前使用情况 {"from-to": flow}
 
 // 平移和缩放状态
 const viewBox = ref({ x: 0, y: 0, width: 1200, height: 700 })
@@ -506,6 +507,9 @@ const startSimulation = async () => {
     activePaths: 0,
     congestedLinks: 0
   }
+  
+  // 重置边使用情况
+  edgeUsageMap.value = {}
 
   // 重置所有节点状态
   visualNodes.value.forEach(node => {
@@ -548,16 +552,28 @@ const calculatePaths = async () => {
   const { source, target, strategy, flowRate } = simConfig.value
 
   try {
+    // 准备边使用情况数据（传递给后端）
+    const edgeUsageList = []
+    for (const key in edgeUsageMap.value) {
+      const [from, to] = key.split('-').map(Number)
+      edgeUsageList.push({
+        from,
+        to,
+        flow: edgeUsageMap.value[key]
+      })
+    }
+    
     console.log('🔍 调用后端API计算路径:', {
       source,
       target,
       strategy,
       flowRate,
       nodeCount: globalNetwork.value.nodes.length,
-      edgeCount: globalNetwork.value.edges.length
+      edgeCount: globalNetwork.value.edges.length,
+      currentEdgeUsage: edgeUsageList.length
     })
     
-    // 调用后端API计算路径和流量分配
+    // 调用后端API计算路径和流量分配（传入边使用情况）
     const result = await api.calculateTrafficPaths(
       globalNetwork.value.nodes,
       globalNetwork.value.edges,
@@ -565,7 +581,8 @@ const calculatePaths = async () => {
       target,
       flowRate,
       strategy, // 'single' or 'balanced'
-      3 // 最多查找3条路径
+      3, // 最多查找3条路径
+      edgeUsageList // 传递当前边使用情况
     )
     
     console.log('✅ 后端返回结果:', result)
@@ -660,6 +677,9 @@ const updateTraffic = (deltaTime) => {
     edge.isActive = false
     edge.flowDirection = null
   })
+  
+  // 重置边使用情况映射
+  edgeUsageMap.value = {}
 
   // 根据活跃路径更新流量
   activePaths.value.forEach(path => {
@@ -670,6 +690,8 @@ const updateTraffic = (deltaTime) => {
       // 查找边（无向图：正向或反向）
       let edge = visualEdges.value.find(e => e.from === from && e.to === to)
       let isReverse = false
+      let edgeKey = null
+      
       if (!edge) {
         edge = visualEdges.value.find(e => e.from === to && e.to === from)
         isReverse = true
@@ -682,6 +704,10 @@ const updateTraffic = (deltaTime) => {
         edge.flowAnimation = path.flow
         // 记录流量方向
         edge.flowDirection = isReverse ? 'reverse' : 'forward'
+        
+        // 更新边使用情况映射（使用边的原始定义方向）
+        edgeKey = `${edge.from}-${edge.to}`
+        edgeUsageMap.value[edgeKey] = (edgeUsageMap.value[edgeKey] || 0) + path.flow
       }
     }
   })
@@ -782,6 +808,9 @@ const resetSimulation = () => {
   
   // 清除活跃路径
   activePaths.value = []
+  
+  // 清空边使用情况
+  edgeUsageMap.value = {}
   
   // 重新初始化可视化
   initVisualization()

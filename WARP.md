@@ -2,13 +2,25 @@
 
 This file provides guidance to WARP (warp.dev) when working with code in this repository.
 
-## Project Overview
+## 💻 Project Overview
 
-校园网络算法可视化平台 (Campus Network Algorithm Visualization Platform) - A full-stack web application implementing network algorithms including Minimum Spanning Tree (MST), Maximum Flow, and AES encryption with interactive visualization and simulation capabilities.
+**校园网络算法可视化平台** (Campus Network Algorithm Visualization Platform)
+
+A comprehensive full-stack web application for network algorithm visualization and interactive simulation.
+
+**Key Features:**
+- 🌲 Minimum Spanning Tree algorithms (Kruskal & Prim)
+- 💧 Maximum Flow algorithms (Edmonds-Karp & Dinic)
+- 🎮 Interactive traffic simulation with real-time visualization
+- 🔐 AES-128 encryption/decryption implementation
+- 🌐 Random planar network generation
+- 📊 Real-time congestion detection and load balancing
 
 **Tech Stack:**
-- Backend: Flask 3.0 + NetworkX + NumPy + Matplotlib
-- Frontend: Vue 3 + Vite
+- **Backend**: Flask 3.0 + NetworkX + NumPy + Matplotlib
+- **Frontend**: Vue 3 Composition API + Vite 5.0
+- **Visualization**: Server-side (Matplotlib) + Client-side (SVG)
+- **State Management**: Vue provide/inject pattern
 
 ## Common Development Commands
 
@@ -113,36 +125,58 @@ npm run preview
      - Max Flow: quick flow calculation
    - Results include metrics and color-coded visualizations
 
-## API Endpoint Patterns
+## 🔌 API Endpoint Patterns
 
-All endpoints follow REST conventions with JSON request/response:
+All endpoints follow REST conventions with JSON request/response.
 
-**MST Endpoints:**
-- `POST /api/mst/compare` - Compare Kruskal vs Prim
-- `POST /api/mst/kruskal` - Kruskal only
-- `POST /api/mst/prim` - Prim only
+### Network Configuration
 
-**Max Flow Endpoints:**
-- `POST /api/maxflow/edmonds-karp` - Edmonds-Karp algorithm
-- `POST /api/maxflow/dinic` - Dinic algorithm
-- `POST /api/maxflow/compare` - Compare both algorithms
+| Endpoint | Method | Description | Request | Response |
+|----------|--------|-------------|---------|----------|
+| `/api/network/generate` | POST | Generate random planar network | `{num_nodes, cost_range, capacity_range, seed}` | `{nodes, edges, topology_image, stats}` |
+| `/api/network/config/default` | GET | Get default network config | - | `{num_nodes, cost_range, capacity_range, seed}` |
+| `/api/graph/preview` | POST | Preview graph visualization | `{nodes, edges, label_mode}` | `{visualization, node_count, edge_count}` |
 
-**Network Configuration:**
-- `POST /api/network/generate` - Generate random network
-- `POST /api/network/apply` - Save as default config
-- `GET /api/network/config` - Get current config
+### Minimum Spanning Tree
 
-**Simulation Endpoints:**
-- `POST /api/robustness/analyze` - Robustness analysis
-- `POST /api/robustness/simulate-edge-removal` - Edge removal simulation
-- `POST /api/robustness/simulate-node-removal` - Node removal simulation
-- `POST /api/traffic/simulate-load-balancing` - Load balancing simulation
+| Endpoint | Method | Description | Request | Response |
+|----------|--------|-------------|---------|----------|
+| `/api/mst/compare` | POST | Compare Kruskal vs Prim | `{nodes, edges}` | `{kruskal: {...}, prim: {...}, comparison}` |
 
-**Other:**
-- `POST /api/aes/encrypt` - AES encryption
-- `POST /api/aes/decrypt` - AES decryption
-- `POST /api/graph/preview` - Preview graph without algorithm
-- `GET /api/health` - Health check
+Response includes: `mst_edges`, `total_weight`, `time_ms`, `visualization`, `steps[]`
+
+### Maximum Flow
+
+| Endpoint | Method | Description | Request | Response |
+|----------|--------|-------------|---------|----------|
+| `/api/maxflow/edmonds-karp` | POST | Edmonds-Karp algorithm | `{nodes, edges, source, sink}` | `{max_flow, flow_edges, time, steps[], visualization}` |
+| `/api/maxflow/dinic` | POST | Dinic algorithm | `{nodes, edges, source, sink}` | `{max_flow, flow_edges, time, steps[], visualization}` |
+
+### Interactive Traffic Simulation
+
+| Endpoint | Method | Description | Request | Response |
+|----------|--------|-------------|---------|----------|
+| `/api/traffic/calculate-paths` | POST | Path calculation with flow allocation | `{nodes, edges, source, target, total_flow, strategy, num_paths, edge_usage}` | `{paths, path_allocations, total_capacity, actual_flow}` |
+
+**Strategy Options:**
+- `"single"` - Single shortest path
+- `"balanced"` - Multi-path load balancing
+
+**Edge Usage Format:** `[{from, to, flow}, ...]`
+
+### Encryption
+
+| Endpoint | Method | Description | Request | Response |
+|----------|--------|-------------|---------|----------|
+| `/api/aes/encrypt` | POST | AES-128 encryption | `{plaintext, key}` | `{encrypted: "hex_string", format: "hex"}` |
+| `/api/aes/decrypt` | POST | AES-128 decryption | `{encrypted: "hex_string", key}` | `{decrypted: "plaintext"}` |
+
+### Utility
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/plots/<filename>` | GET | Retrieve generated plot image |
+| `/api/health` | GET | Health check endpoint |
 
 ## Important Implementation Details
 
@@ -247,10 +281,30 @@ This project is developed on Windows with PowerShell:
 - vite 5.0.0
 - @vitejs/plugin-vue 5.0.0
 
-## Project Features
+## ✨ Latest Features (2025-11-02)
 
-See `SIMULATION_FEATURES.md` for detailed documentation on:
-- Network robustness analysis
-- Multi-path load balancing
-- Congestion avoidance
-- Interactive traffic simulation
+### Interactive Traffic Simulation
+- **Real-time SVG animation**: Particle-based flow visualization
+- **Smart path selection**: Utilization-aware routing (80% threshold)
+- **Congestion control**: Dynamic link avoidance based on capacity
+- **Load balancing**: Single-path and balanced multi-path strategies
+- **Shared edge handling**: Automatic flow adjustment for converging paths
+- **Statistics dashboard**: Real-time throughput, utilization, congestion metrics
+
+### Algorithm Performance Tracking
+- **Separated timing**: Pure algorithm time vs visualization time
+- **Step-by-step visualization**: Frame-by-frame algorithm execution
+- **Comparison mode**: Side-by-side algorithm benchmarking
+
+### Enhanced Visualization
+- **Fixed layout**: Consistent node positioning across frames
+- **High-resolution output**: 150 DPI PNG images
+- **Base64 encoding**: No server-side file storage required
+- **Chinese font support**: Automatic font fallback configuration
+
+## 📄 Documentation
+
+- [Technical Report](docs/技术报告.md) - Complete technical analysis
+- [Update Summary](UPDATE_SUMMARY.md) - Recent feature updates
+- [Backend README](backend/README.md) - API documentation
+- [Frontend README](frontend/README.md) - Component guide

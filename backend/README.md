@@ -1,14 +1,17 @@
 # Campus Network Backend
 
-基于 Flask 的校园网络算法后端 API
+基于 Flask 的校园网络算法后端 API，实现了完整的图算法可视化、动态流量仿真和高性能算法对比功能。
 
-## 安装依赖
+## 🚀 快速开始
+
+### 安装依赖
 
 ```bash
+cd backend
 pip install -r requirements.txt
 ```
 
-## 运行服务
+### 运行服务
 
 ```bash
 python app.py
@@ -16,17 +19,55 @@ python app.py
 
 默认地址：`http://localhost:5000`
 
-## API 概览（已对齐前端实际使用）
-- POST /api/network/generate — 生成随机校园网络拓扑
-- GET  /api/network/config/default — 获取默认网络配置
-- POST /api/graph/preview — 绘制原始图
-- POST /api/mst/compare — 比较 Kruskal 与 Prim
-- POST /api/maxflow/edmonds-karp — Edmonds-Karp 最大流
-- POST /api/maxflow/dinic — Dinic 最大流
-- POST /api/aes/encrypt — AES-128 加密（输出 hex）
-- POST /api/aes/decrypt — AES-128 解密（输入 hex）
-- POST /api/traffic/calculate-paths — 路径与流量分配（交互仿真）
-- GET  /api/plots/<filename> — 获取生成图片（如需）
+### 依赖项
+
+- Flask 3.0.0 - Web框架
+- flask-cors 4.0.0 - 跨域支持
+- networkx 3.2.1 - 图算法库
+- matplotlib 3.8.2 - 图像生成
+- numpy 1.26.2 - 数值计算
+
+## 📊 API 概览
+
+### 网络配置 API
+
+| 端点 | 方法 | 功能 | 说明 |
+|------|------|------|------|
+| `/api/network/generate` | POST | 生成随机网络拓扑 | 生成连通平面图，返回Base64图像 |
+| `/api/network/config/default` | GET | 获取默认配置 | 返回当前默认网络参数 |
+| `/api/graph/preview` | POST | 绘制原始图 | 支持多种标签模式 |
+
+### 最小生成树 API
+
+| 端点 | 方法 | 功能 | 说明 |
+|------|------|------|------|
+| `/api/mst/compare` | POST | 对比两种算法 | 同时运行Kruskal和Prim，返回步骤与性能 |
+
+### 最大流 API
+
+| 端点 | 方法 | 功能 | 说明 |
+|------|------|------|------|
+| `/api/maxflow/edmonds-karp` | POST | Edmonds-Karp算法 | BFS增广路径，O(VE²) |
+| `/api/maxflow/dinic` | POST | Dinic算法 | 层次图+DFS，O(V²E) |
+
+### 加密 API
+
+| 端点 | 方法 | 功能 | 说明 |
+|------|------|------|------|
+| `/api/aes/encrypt` | POST | AES-128加密 | 输出hex格式密文 |
+| `/api/aes/decrypt` | POST | AES-128解密 | 输入hex格式密文 |
+
+### 交互式仿真 API
+
+| 端点 | 方法 | 功能 | 说明 |
+|------|------|------|------|
+| `/api/traffic/calculate-paths` | POST | 路径计算与流量分配 | 支持多路径、负载均衡、拥塞检测 |
+
+### 其他 API
+
+| 端点 | 方法 | 功能 | 说明 |
+|------|------|------|------|
+| `/api/plots/<filename>` | GET | 获取生成图像 | 返回静态图片文件 |
 
 ## 详细说明与示例
 
@@ -118,21 +159,125 @@ POST /api/traffic/calculate-paths
 - `path_allocations`: 每条路径的 {flow, capacity, utilization}
 - `total_capacity`, `requested_flow`, `actual_flow`, `is_limited`, `num_paths`
 
-## 项目结构
+## 📁 项目结构
+
 ```
 backend/
-├── app.py                    # Flask 应用入口与路由
-├── requirements.txt          # 依赖
-├── algorithms/
-│   ├── mst.py               # MST 算法
-│   ├── maxflow.py           # 最大流算法
-│   ├── aes_encrypt.py       # AES-128 实现
-│   ├── traffic.py           # 路径与分配（calculate-paths）
-│   ├── generate_graph.py    # 随机网络生成
-│   └── utils.py             # 绘图与通用工具
-├── config/
-│   └── network_config.py    # 配置模型与默认配置
-└── static/plots/            # 生成的图像文件
+├── app.py                    # Flask 应用主入口，路由定义与请求处理
+├── requirements.txt          # Python 依赖包列表
+├── algorithms/               # 核心算法实现模块
+│   ├── mst.py               # 最小生成树 (Kruskal & Prim)
+│   ├── maxflow.py           # 最大流 (Edmonds-Karp & Dinic)
+│   ├── aes_encrypt.py       # AES-128 完整实现
+│   ├── traffic.py           # 流量仿真与多路径负载均衡
+│   ├── generate_graph.py    # 随机平面网络生成器
+│   └── utils.py             # 可视化工具与通用函数
+├── config/                  # 配置文件模块
+│   └── network_config.py    # 网络参数配置类与默认配置
+└── static/plots/            # 服务端生成的图像文件存储
 ```
 
-> 说明：鲁棒性与负载均衡模拟的历史接口已移除，后端与前端保持最小必要对齐。
+## 💻 核心算法实现
+
+### 1. 最小生成树 (algorithms/mst.py)
+
+**Kruskal 算法**
+- 实现策略：边排序 + 并查集 (Union-Find)
+- 时间复杂度：O(E log E)
+- 特点：适合稀疏图，每步选择全局最小边
+
+**Prim 算法**
+- 实现策略：优先队列 + 增量扩展
+- 时间复杂度：O(E log V)
+- 特点：适合密集图，从单点逐步增长
+
+**可视化支持**
+- 逐步动画：生成每个选边步骤的Base64图像
+- 布局固定：使用固定布局算法避免节点抖动
+- 颜色编码：黄色(候选)、绿色(已选)、红色(当前)
+
+### 2. 最大流 (algorithms/maxflow.py)
+
+**Edmonds-Karp 算法**
+- 核心思想：BFS 寻找最短增广路径
+- 时间复杂度：O(VE²)
+- 实现特色：残量图 + BFS队列 + 路径回溯
+
+**Dinic 算法**
+- 核心思想：分层次图 + DFS 阻塞流
+- 时间复杂度：O(V²E)，单位网络下 O(E√V)
+- 实现特色：层次图 + 当前弧优化 + 多路增广
+
+**可视化支持**
+- 增广路径帧：高亮显示当前路径和瓶颈值
+- 层次图帧：(Dinic) 展示分层结构
+- 流量可视：边宽表示流量大小
+- 累积历史：显示所有历史路径
+
+### 3. 流量仿真 (algorithms/traffic.py)
+
+**LoadBalancer 类**
+- 多路径查找：基于惩罚机制的 k 条最短路径
+- 边不相交策略：移除已用边后再次搜索
+- 权重惩罚策略：对已用边增加权重促进多样化
+
+**拥塞检测**
+- 链路利用率阈值：80% 阈值判定
+- 50-80%：适度权重惩罚
+- 80-95%：大幅权重惩罚，尽量避开
+- >95%：极高惩罚，几乎完全避免
+
+**流量分配策略**
+- Single：单路径模式，所有流量走最短路径
+- Balanced：负载均衡模式，按容量比例分配
+- 共享边处理：自动识别并调整多路径汇聚的边
+
+### 4. AES加密 (algorithms/aes_encrypt.py)
+
+**AES128 类**
+- 完整实现：AES-128 加密、解密、密钥扩展
+- 核心操作：SubBytes、ShiftRows、MixColumns、AddRoundKey
+- 模式支持：ECB 模式 + PKCS#7 填充
+- 格式输出：hex 编码字符串
+
+### 5. 网络生成 (algorithms/generate_graph.py)
+
+**generate_random_planar_network**
+- 连通性保证：先构建生成树
+- 平面性保证：使用 NetworkX 的 check_planarity
+- 属性分配：造价(cost)和容量(capacity)随机生成
+- 布局算法：极坐标随机布置 + 最小间距约束
+
+## 🎨 可视化系统
+
+### 图像生成流程
+1. Matplotlib 服务端绘图 (Agg backend)
+2. BytesIO 内存缓冲区存储
+3. Base64 编码传输
+4. 前端 <img> 标签显示
+
+### 可视化特性
+- **中文支持**：自动配置中文字体回退
+- **主题一致**：统一的蓝紫主题配色方案
+- **布局稳定**：固定布局算法避免节点抖动
+- **高清输出**：150 DPI 高分辨率图像
+
+## 🔧 工具函数 (algorithms/utils.py)
+
+### 核心函数
+- `validate_graph_data()` - 图数据校验
+- `compute_fixed_layout()` - 固定布局计算
+- `setup_chinese_font()` - 中文字体配置
+- `draw_original_graph()` - 原始图绘制
+- `draw_mst_result()` - MST 结果可视化
+- `draw_maxflow_result()` - 最大流结果可视化
+- `draw_mst_step_visualization()` - MST 步骤帧
+- `draw_maxflow_step_visualization()` - 最大流步骤帧
+
+## ⚠️ 注意事项
+
+1. **环境要求**：Python 3.8+
+2. **内存管理**：大型网络可视化需要较多内存
+3. **线程安全**：Matplotlib 不支持多线程，使用默认单线程模式
+4. **跨域配置**：Flask-CORS 已启用，允许所有源访问
+5. **性能优化**：算法计时与可视化计时分开，准确衡量算法性能

@@ -82,7 +82,7 @@ export const api = {
   },
 
   // 交互式仿真 - 计算路径与分配
-  calculateTrafficPaths(nodes, edges, source, target, totalFlow, strategy = 'balanced', numPaths = 3) {
+  calculateTrafficPaths(nodes, edges, source, target, totalFlow, strategy = 'balanced', numPaths = 3, edgeUsage = []) {
     return request('/traffic/calculate-paths', {
       method: 'POST',
       body: JSON.stringify({
@@ -93,6 +93,7 @@ export const api = {
         total_flow: totalFlow,
         strategy,
         num_paths: numPaths,
+        edge_usage: edgeUsage,  // 传入当前链路使用情况
       }),
     })
   },
