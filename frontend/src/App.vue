@@ -28,10 +28,6 @@
         </div>
       </div>
     </div>
-
-    <footer class="footer">
-      <p>Campus Network Visualization Platform © 2025</p>
-    </footer>
   </div>
 </template>
 
@@ -73,7 +69,7 @@ const tabs = [
 
 .header {
   text-align: center;
-  padding: 1.5rem 1rem 1.2rem;
+  padding: 0.8rem 1rem 0.6rem;
   color: white;
   background: rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(25px);
@@ -141,7 +137,7 @@ const tabs = [
 .main-layout {
   display: flex;
   width: 100%;
-  height: calc(100vh - 140px);
+  height: calc(100vh - 90px);
   gap: 0;
 }
 
@@ -248,20 +244,6 @@ const tabs = [
   overflow-x: hidden;
 }
 
-.footer {
-  text-align: center;
-  padding: 1rem;
-  color: white;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(20px);
-  font-size: 0.85rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.footer p {
-  margin: 0;
-  opacity: 0.9;
-}
 
 @media (max-width: 968px) {
   .header h1 {
