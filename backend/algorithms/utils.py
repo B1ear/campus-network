@@ -145,8 +145,15 @@ def draw_original_graph_directed(nodes, edges, label_mode='capacity'):
             return e.get('capacity', '')
         if label_mode == 'cost':
             return e.get('weight', e.get('cost', 0))
-        # auto: 优先显示容量
-        return e.get('capacity', e.get('weight', e.get('cost', 0)))
+        # auto: 同时显示造价和路由（容量）
+        cost = e.get('weight', e.get('cost', 0))
+        capacity = e.get('capacity', None)
+        if cost and capacity:
+            return f"造价:{cost}\n路由:{capacity}"
+        elif capacity:
+            return f"路由:{capacity}"
+        else:
+            return f"造价:{cost}"
     
     edge_labels = {(e['from'], e['to']): edge_label_for(e) for e in edges}
     nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, ax=ax,
@@ -221,8 +228,15 @@ def draw_original_graph(nodes, edges, label_mode='auto'):
             return e.get('capacity', '')
         if label_mode == 'cost':
             return e.get('weight', e.get('cost', 0))
-        # auto: 优先显示造价
-        return e.get('weight', e.get('cost', e.get('capacity', 0)))
+        # auto: 同时显示造价和路由（容量）
+        cost = e.get('weight', e.get('cost', 0))
+        capacity = e.get('capacity', None)
+        if cost and capacity:
+            return f"造价:{cost}\n路由:{capacity}"
+        elif capacity:
+            return f"路由:{capacity}"
+        else:
+            return f"造价:{cost}"
     edge_labels = {(e['from'], e['to']): edge_label_for(e) for e in edges}
     nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, ax=ax,
                                 font_size=10, font_color='#2d3748',
