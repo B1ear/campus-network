@@ -143,7 +143,7 @@
         <div class="comparison-grid">
           <div class="metric-card ek">
             <div class="metric-label">Edmonds-Karp</div>
-            <div class="metric-value">{{ result.ek.time_ms.toFixed(2) }} ms</div>
+            <div class="metric-value">{{ result.ek.time_ms.toFixed(4) }} ms</div>
             <div class="metric-extra">最大流: {{ result.ek.max_flow }}</div>
           </div>
           <div class="vs-divider">
@@ -156,7 +156,7 @@
           </div>
           <div class="metric-card dinic">
             <div class="metric-label">Dinic</div>
-            <div class="metric-value">{{ result.dinic.time_ms.toFixed(2) }} ms</div>
+            <div class="metric-value">{{ result.dinic.time_ms.toFixed(4) }} ms</div>
             <div class="metric-extra">最大流: {{ result.dinic.max_flow }}</div>
           </div>
         </div>
